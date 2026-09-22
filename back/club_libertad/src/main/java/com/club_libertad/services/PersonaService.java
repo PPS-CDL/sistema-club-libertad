@@ -31,8 +31,9 @@ public class PersonaService {
     private final CuotaRepository cuotaRepository;
     private final PagoRepository pagoRepository;
     private final PromocionRepository promocionRepository;
+    private final CuotaService cuotaService;
 
-    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository) {
+    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService) {
         this.personaRepository = personaRepository;
         this.deporteRepository = deporteRepository;
         this.registroRepository = registroRepository;
@@ -40,6 +41,7 @@ public class PersonaService {
         this.cuotaRepository = cuotaRepository;
         this.pagoRepository = pagoRepository;
         this.promocionRepository = promocionRepository;
+        this.cuotaService = cuotaService;
     }
 
     @Transactional(readOnly = true)
@@ -112,6 +114,11 @@ public class PersonaService {
 
         Persona p = personaRepository.save(personaCreate);
 
+        // Si se asignó promoción al crear, evaluar recálculo de cuota actual impaga
+        if (p.getPromocion() != null) {
+            cuotaService.actualizarCuotasMesActualParaPersona(p);
+        }
+        
         return Optional.of(p.getId());
     }
 
@@ -142,29 +149,39 @@ public class PersonaService {
 
     @Transactional
     public boolean updatePersonaParcial(Long id, PersonaDTO personaUpdate){
-        boolean b = false;
-        Optional<Persona> persona = getPersonaById(id);
-        if(persona.isPresent()){
-            if(personaUpdate.getNombre() != null) persona.get().setNombre(personaUpdate.getNombre());
-            if(personaUpdate.getApellido() != null) persona.get().setApellido(personaUpdate.getApellido());
-            if(personaUpdate.getFechaNacimiento() != null) persona.get().setFechaNacimiento(personaUpdate.getFechaNacimiento());
-            if(personaUpdate.getEmail() != null) persona.get().setEmail(personaUpdate.getEmail());
-            if(personaUpdate.getTelefono() != null) persona.get().setTelefono(personaUpdate.getTelefono());
-            if(personaUpdate.getDireccion() != null) persona.get().setDireccion(personaUpdate.getDireccion());
-            if(personaUpdate.getCategoria() != null) persona.get().setCategoria(personaUpdate.getCategoria());
+        Optional<Persona> personaOpt = getPersonaById(id);
+        if(personaOpt.isPresent()){
+            Persona persona = personaOpt.get();
+            if(personaUpdate.getNombre() != null) persona.setNombre(personaUpdate.getNombre());
+            if(personaUpdate.getApellido() != null) persona.setApellido(personaUpdate.getApellido());
+            if(personaUpdate.getFechaNacimiento() != null) persona.setFechaNacimiento(personaUpdate.getFechaNacimiento());
+            if(personaUpdate.getEmail() != null) persona.setEmail(personaUpdate.getEmail());
+            if(personaUpdate.getTelefono() != null) persona.setTelefono(personaUpdate.getTelefono());
+            if(personaUpdate.getDireccion() != null) persona.setDireccion(personaUpdate.getDireccion());
+            if(personaUpdate.getCategoria() != null) persona.setCategoria(personaUpdate.getCategoria());
             if(personaUpdate.getSocioResponsableId() != null){
                 Persona p = new Persona();
                 p.setId(personaUpdate.getSocioResponsableId());
-                persona.get().setSocioResponsable(p);
+                persona.setSocioResponsable(p);
             } 
+            
+            // Actualizar o remover promoción
             if(personaUpdate.getPromocionId() != null){
-                Promocion p = new Promocion();
-                p.setId(personaUpdate.getPromocionId());
-                persona.get().setPromocion(p);
+                Optional<Promocion> promoOpt = promocionRepository.findById(personaUpdate.getPromocionId());
+                promoOpt.ifPresent(persona::setPromocion);
+            } else {
+                // Si se envía explícitamente sin promoción o se decide limpiar
+                persona.setPromocion(null);
             }
-            b = true;
+            
+            personaRepository.save(persona);
+
+            // Disparar la actualización de la cuota del mes actual (aplica descuento o revierte si se quitó)
+            cuotaService.actualizarCuotasMesActualParaPersona(persona);
+
+            return true;
         }
-        return b;
+        return false;
     }
 
     @Transactional
