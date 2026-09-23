@@ -6,6 +6,8 @@ import com.club_libertad.services.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.club_libertad.dtos.IngresoPorSocioDTO;
+import io.swagger.v3.oas.annotations.Operation;
 
 import java.util.List;
 import java.util.Optional;
@@ -48,5 +50,15 @@ public class PagoController {
             System.out.println(e.getMessage());
         }
         return response;
+    }
+
+        @GetMapping("/pagos/ingresos-por-socio")
+    @Operation(summary = "Obtiene resumen de ingresos agrupado por socio")
+    public ResponseEntity<List<IngresoPorSocioDTO>> getIngresosPorSocio() {
+        List<IngresoPorSocioDTO> ingresos = pagoService.getIngresosPorSocio();
+        if (ingresos == null || ingresos.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(ingresos);
     }
 }

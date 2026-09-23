@@ -9,6 +9,7 @@ import com.club_libertad.repositories.CuotaRepository;
 import com.club_libertad.repositories.PagoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.club_libertad.dtos.IngresoPorSocioDTO;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -82,4 +83,11 @@ public class PagoService {
         
         return Optional.of(pagoCreated.getId());
     }
+
+        @Transactional(readOnly = true)
+    public List<com.club_libertad.dtos.IngresoPorSocioDTO> getIngresosPorSocio() {
+        return pagoRepository.findIngresosPorSocio();
+    }
 }
+
+
