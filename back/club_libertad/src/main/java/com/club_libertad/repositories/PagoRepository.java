@@ -32,9 +32,6 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         """)
     List<IngresoPorSocioDTO> findIngresosPorSocio();
 
-}
-    void deleteBySocioId_Id(Long socioId);
-
     List<Pago> findByFechaPago(LocalDate fechaPago);
 
     List<Pago> findByFechaPagoBetween(LocalDate fechaDesde, LocalDate fechaHasta);

@@ -27,6 +27,8 @@ export interface IngresoPorSocioDTO {
   totalPagado: number;
   cantidadPagos: number;
   ultimoPago: string | null;
+}
+
 export interface FiltroFechaParams {
   fecha?: string;      // Formato: YYYY-MM-DD
   fechaDesde?: string; // Formato: YYYY-MM-DD
@@ -74,6 +76,10 @@ const pagoService = {
     getIngresosPorSocio() {
     return api.get<IngresoPorSocioDTO[]>(PAGO_ENDPOINTS.GET_INGRESOS_POR_SOCIO).catch(error => {
       console.error('Error al obtener ingresos por socio:', error);
+      throw error;
+    });
+  },
+  
   getByFechaORango(params: FiltroFechaParams) {
     const query = new URLSearchParams();
     if (params.fecha && params.fecha.trim() !== '') {

@@ -91,7 +91,7 @@ public class PagoService {
     public List<com.club_libertad.dtos.IngresoPorSocioDTO> getIngresosPorSocio() {
         return pagoRepository.findIngresosPorSocio();
     }
-}
+
 
 
     @Transactional(readOnly = true)

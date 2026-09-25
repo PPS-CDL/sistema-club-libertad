@@ -65,7 +65,6 @@ public class PagoController {
         }
         return ResponseEntity.ok(ingresos);
     }
-}
     @GetMapping("/pagos/filtro")
     @Operation(summary = "Obtiene listado de pagos por fecha o rango de fechas")
     public ResponseEntity<List<Pago>> getPagosPorFecha(
@@ -91,3 +90,4 @@ public class PagoController {
         return ResponseEntity.ok(resumen);
     }
 }
+    

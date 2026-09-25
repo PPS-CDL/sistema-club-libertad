@@ -11,8 +11,7 @@ import { Plus, Download, FileText, DollarSign, TrendingUp, AlertCircle, ChevronD
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner@2.0.3';
 import cuotaService from '../services/cuotaService';
-import pagoService, { IngresoPorSocioDTO } from '../services/pagoService';
-import pagoService, { type FiltroFechaParams, type ResumenIngresos } from '../services/pagoService';
+import pagoService, { type IngresoPorSocioDTO, type FiltroFechaParams, type ResumenIngresos } from '../services/pagoService';
 import personaService from '../services/personaService';
 import deporteService from '../services/deporteService';
 import type { Cuota } from '../types/cuota';
@@ -88,17 +87,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
       // Luego cargar todas las cuotas, personas, deportes e ingresos por socio en paralelo
       const [cuotasRes, personasRes, deportesRes, pagosRes, ingresosPorSocioRes] = await Promise.all([
-          cuotaService.getAll(),
-          personaService.getAll(),
-          deporteService.getAll(),
-          pagoService.getAll(),
-          pagoService.getIngresosPorSocio(),
-        ]);
-      const [cuotasRes, personasRes, deportesRes, pagosRes] = await Promise.all([
         cuotaService.getAll(),
         personaService.getAll(),
         deporteService.getAll(),
         pagoService.getAll(),
+        pagoService.getIngresosPorSocio(),
       ]);
       const cuotasData = Array.isArray(cuotasRes.data) ? cuotasRes.data : [];
       const personasData = Array.isArray(personasRes.data) ? personasRes.data : [];
@@ -817,41 +810,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           const hasConceptos = desgloseArray.some(d => d.entrenador || d.seguro || d.social);
 
                           return (
-                            <>
-                              <TableRow key={pago.id} className="cursor-pointer hover:bg-gray-50" onClick={() => togglePagoExpanded(String(pago.id))}>
-                                <TableCell>
-                                  {hasConceptos ? (
-                                    isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-                                  ) : null}
-                        const socio = personas.find(p => Number(p.id) === Number(pago.socioId));
-                        const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
-                        const deportesNombres = cuotasDePago
-                          .map(c => {
-                            const deporte = deportes.find(d => Number(d.id) === Number(c.deporteId));
-                            return deporte?.nombre || 'Deporte desconocido';
-                          })
-                          .join(', ');
-                        const isExpanded = expandedPagos.has(String(pago.id));
-                        const desglosePorDeporte = cuotasDePago.reduce((acc, cuota) => {
-                          const deporteId = Number(cuota.deporteId);
-                          if (!acc[deporteId]) {
-                            const deporte = deportes.find(d => Number(d.id) === deporteId);
-                            acc[deporteId] = {
-                              nombre: deporte?.nombre || 'Deporte desconocido',
-                              entrenador: 0,
-                              seguro: 0,
-                              social: 0,
-                            };
-                          }
-                          acc[deporteId].entrenador += cuota.cuotaEntrenador || 0;
-                          acc[deporteId].seguro += cuota.cuotaSeguro || 0;
-                          acc[deporteId].social += cuota.cuotaSocial || 0;
-                          return acc;
-                        }, {} as Record<number, { nombre: string; entrenador: number; seguro: number; social: number }>);
-                        const desgloseArray = Object.values(desglosePorDeporte);
-                        const hasConceptos = desgloseArray.some(d => d.entrenador || d.seguro || d.social);
-                        
-                        return (
+                               
                           <>
                             <TableRow key={pago.id} className="cursor-pointer hover:bg-gray-50" onClick={() => togglePagoExpanded(String(pago.id))}>
                               <TableCell>
@@ -905,54 +864,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell>{socio ? `${socio.nombre} ${socio.apellido}` : '—'}</TableCell>
-                                <TableCell>{socio?.dni || '—'}</TableCell>
-                                <TableCell>{deportesNombres || '—'}</TableCell>
-                                <TableCell>${(pago.montoTotal || 0).toLocaleString()}</TableCell>
-                                <TableCell>{pago.fechaPago ? new Date(pago.fechaPago).toLocaleDateString('es-ES') : '—'}</TableCell>
-                                <TableCell>{pago.observaciones || '—'}</TableCell>
                               </TableRow>
-                              {isExpanded && hasConceptos && (
-                                <TableRow key={`${pago.id}-desglose`} className="bg-gray-50">
-                                  <TableCell colSpan={7} className="py-3 px-6">
-                                    <div className="space-y-2">
-                                      <p className="text-sm font-semibold text-gray-700">Desglose de conceptos:</p>
-                                      <div className="space-y-3">
-                                        {desgloseArray.map((d, idx) => (
-                                          <div key={`${pago.id}-dep-${idx}`} className="rounded border bg-white p-3">
-                                            <div className="font-medium text-gray-700 mb-2">{d.nombre}</div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                              {d.entrenador > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Entrenador:</span>
-                                                  <span className="font-semibold">${d.entrenador.toLocaleString()}</span>
-                                                </div>
-                                              )}
-                                              {d.seguro > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Seguro:</span>
-                                                  <span className="font-semibold">${d.seguro.toLocaleString()}</span>
-                                                </div>
-                                              )}
-                                              {d.social > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Social:</span>
-                                                  <span className="font-semibold">${d.social.toLocaleString()}</span>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {pago.montoTotal !== (pago.cuotaEntrenador + pago.cuotaSeguro + pago.cuotaSocial) && (
-                                        <p className="text-xs text-gray-500 mt-2">
-                                          * El monto total puede diferir de la suma por promociones aplicadas
-                                        </p>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              )}
+                            )}
                             </>
                           );
                         })
@@ -1029,6 +942,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </div>
                 </CardContent>
               </Card>
+              </TabsContent>
             {/* Listado y Reporte por Fecha o Rango */}
             <TabsContent value="ingresos-fecha" className="space-y-4">
               <div className="rounded-lg border bg-card p-4 space-y-4">
