@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.club_libertad.dtos.IngresoPorSocioDTO;
+import io.swagger.v3.oas.annotations.Operation;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -54,6 +56,16 @@ public class PagoController {
         return response;
     }
 
+        @GetMapping("/pagos/ingresos-por-socio")
+    @Operation(summary = "Obtiene resumen de ingresos agrupado por socio")
+    public ResponseEntity<List<IngresoPorSocioDTO>> getIngresosPorSocio() {
+        List<IngresoPorSocioDTO> ingresos = pagoService.getIngresosPorSocio();
+        if (ingresos == null || ingresos.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(ingresos);
+    }
+}
     @GetMapping("/pagos/filtro")
     @Operation(summary = "Obtiene listado de pagos por fecha o rango de fechas")
     public ResponseEntity<List<Pago>> getPagosPorFecha(

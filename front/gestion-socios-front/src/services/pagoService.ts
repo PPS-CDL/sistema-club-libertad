@@ -3,6 +3,7 @@ import api from './api';
 const PAGO_ENDPOINTS = {
   CREATE: '/pago',
   GET_ALL: '/pagos',
+  GET_INGRESOS_POR_SOCIO: '/pagos/ingresos-por-socio', 
   FILTRO: '/pagos/filtro',
   RESUMEN: '/pagos/resumen-ingresos',
 };
@@ -18,6 +19,14 @@ export interface CrearPagoPayload {
   cuotaIds: number[];
 }
 
+export interface IngresoPorSocioDTO {
+  socioId: number;
+  nombre: string;
+  apellido: string;
+  dni: string;
+  totalPagado: number;
+  cantidadPagos: number;
+  ultimoPago: string | null;
 export interface FiltroFechaParams {
   fecha?: string;      // Formato: YYYY-MM-DD
   fechaDesde?: string; // Formato: YYYY-MM-DD
@@ -61,6 +70,10 @@ const pagoService = {
       throw error;
     });
   },
+
+    getIngresosPorSocio() {
+    return api.get<IngresoPorSocioDTO[]>(PAGO_ENDPOINTS.GET_INGRESOS_POR_SOCIO).catch(error => {
+      console.error('Error al obtener ingresos por socio:', error);
   getByFechaORango(params: FiltroFechaParams) {
     const query = new URLSearchParams();
     if (params.fecha && params.fecha.trim() !== '') {
