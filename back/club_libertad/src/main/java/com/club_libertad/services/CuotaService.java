@@ -155,6 +155,47 @@ public class CuotaService {
         return cuotasGeneradas;
     }
 
+    /**
+     * Actualiza la cuota del mes actual de una persona ante cambios en su promoción,
+     * recalculando con el valor vigente actual del deporte y respetando que la cuota
+     * exista, esté impaga y sin tocar meses anteriores ni cuotas pagadas.
+     */
+    @Transactional
+    public void actualizarCuotasMesActualParaPersona(Persona persona) {
+        LocalDate hoy = LocalDate.now();
+        LocalDate primerDiaMes = hoy.withDayOfMonth(1);
+        // Obtenemos todas las cuotas y filtramos por la persona y el mes actual
+        List<Cuota> todasLasCuotas = cuotaRepository.findAll();
+        
+        for (Cuota cuota : todasLasCuotas) {
+            // Validar que la cuota pertenezca a la persona y al período del mes actual
+            boolean esDeLaPersona = cuota.getPersonaId() != null && cuota.getPersonaId().getId().equals(persona.getId());
+            boolean esDelMesActual = cuota.getPeriodo() != null && cuota.getPeriodo().equals(primerDiaMes);
+            
+            if (esDeLaPersona && esDelMesActual) {
+                // REGLA: Nunca modificar cuotas pagadas
+                if (cuota.getEstado() == EstadoCuota.PAGADA) {
+                    continue;
+                }
+                
+                Deporte deporte = cuota.getDeporteId();
+                if (deporte != null) {
+                    BigDecimal cuotaEntrenador = deporte.getCuotaEntrenador() != null ? deporte.getCuotaEntrenador() : BigDecimal.ZERO;
+                    BigDecimal cuotaSeguro = deporte.getCuotaSeguro() != null ? deporte.getCuotaSeguro() : BigDecimal.ZERO;
+                    BigDecimal cuotaSocial = deporte.getCuotaSocial() != null ? deporte.getCuotaSocial() : BigDecimal.ZERO;
+                    BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
+                    
+                    // Recalcular usando la promoción actual o valor vigente sin promoción
+                    BigDecimal montoFinal = aplicarDescuentoPromocion(montoBase, persona.getPromocion());
+                    
+                    cuota.setMonto(montoFinal);
+                    cuotaRepository.save(cuota);
+                }
+            }
+        }
+     }
+
+
     @Transactional
     public int actualizarCuotasVencidas(){
         LocalDate hoy = LocalDate.now();
