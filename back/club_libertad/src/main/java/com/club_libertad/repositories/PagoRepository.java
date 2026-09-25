@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 import com.club_libertad.dtos.IngresoPorSocioDTO;
 
+import java.time.LocalDate;
+import java.util.List;
+
 @Repository
 public interface PagoRepository extends JpaRepository<Pago, Long> {
     
@@ -29,4 +32,14 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         """)
     List<IngresoPorSocioDTO> findIngresosPorSocio();
 
+}
+    void deleteBySocioId_Id(Long socioId);
+
+    List<Pago> findByFechaPago(LocalDate fechaPago);
+
+    List<Pago> findByFechaPagoBetween(LocalDate fechaDesde, LocalDate fechaHasta);
+
+    List<Pago> findByFechaPagoGreaterThanEqual(LocalDate fechaDesde);
+
+    List<Pago> findByFechaPagoLessThanEqual(LocalDate fechaHasta);
 }

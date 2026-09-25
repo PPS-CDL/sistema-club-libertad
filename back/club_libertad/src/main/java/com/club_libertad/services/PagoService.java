@@ -12,7 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.club_libertad.dtos.IngresoPorSocioDTO;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -91,3 +94,46 @@ public class PagoService {
 }
 
 
+    @Transactional(readOnly = true)
+    public List<Pago> getPagosPorFechaORango(LocalDate fecha, LocalDate fechaDesde, LocalDate fechaHasta) {
+        if (fecha != null) {
+            return pagoRepository.findByFechaPago(fecha);
+        } else if (fechaDesde != null && fechaHasta != null) {
+            return pagoRepository.findByFechaPagoBetween(fechaDesde, fechaHasta);
+        } else if (fechaDesde != null) {
+            return pagoRepository.findByFechaPagoGreaterThanEqual(fechaDesde);
+        } else if (fechaHasta != null) {
+            return pagoRepository.findByFechaPagoLessThanEqual(fechaHasta);
+        }
+        return pagoRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getResumenIngresos(LocalDate fecha, LocalDate fechaDesde, LocalDate fechaHasta) {
+        List<Pago> pagos = getPagosPorFechaORango(fecha, fechaDesde, fechaHasta);
+
+        BigDecimal totalRecaudado = BigDecimal.ZERO;
+        BigDecimal totalEntrenador = BigDecimal.ZERO;
+        BigDecimal totalSeguro = BigDecimal.ZERO;
+        BigDecimal totalSocial = BigDecimal.ZERO;
+
+        for (Pago p : pagos) {
+            if (p.getMontoTotal() != null) totalRecaudado = totalRecaudado.add(p.getMontoTotal());
+            if (p.getCuotaEntrenador() != null) totalEntrenador = totalEntrenador.add(p.getCuotaEntrenador());
+            if (p.getCuotaSeguro() != null) totalSeguro = totalSeguro.add(p.getCuotaSeguro());
+            if (p.getCuotaSocial() != null) totalSocial = totalSocial.add(p.getCuotaSocial());
+        }
+
+        Map<String, Object> resumen = new HashMap<>();
+        resumen.put("cantidadIngresos", pagos.size());
+        resumen.put("montoTotal", totalRecaudado);
+        resumen.put("totalEntrenador", totalEntrenador);
+        resumen.put("totalSeguro", totalSeguro);
+        resumen.put("totalSocial", totalSocial);
+        resumen.put("fecha", fecha);
+        resumen.put("fechaDesde", fechaDesde);
+        resumen.put("fechaHasta", fechaHasta);
+
+        return resumen;
+    }
+}
