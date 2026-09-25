@@ -7,11 +7,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Download, FileText, DollarSign, TrendingUp, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Download, FileText, DollarSign, TrendingUp, AlertCircle, ChevronDown, ChevronRight, Calendar, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner@2.0.3';
 import cuotaService from '../services/cuotaService';
-import pagoService from '../services/pagoService';
+import pagoService, { type FiltroFechaParams, type ResumenIngresos } from '../services/pagoService';
 import personaService from '../services/personaService';
 import deporteService from '../services/deporteService';
 import type { Cuota } from '../types/cuota';
@@ -49,8 +49,24 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [filterDeportePago, setFilterDeportePago] = useState<string>('all');
   const [filterMesPago, setFilterMesPago] = useState<string>('all');
   const [expandedPagos, setExpandedPagos] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<string>('todos');
 
-  // Helper para extraer mes-año de periodo sin problemas de timezone
+  const getFechaHoy = () => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const [modoFiltroFecha, setModoFiltroFecha] = useState<'dia' | 'rango'>('dia');
+  const [fechaFiltro, setFechaFiltro] = useState<string>(getFechaHoy());
+  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>('');
+  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>('');
+  const [resumenIngresos, setResumenIngresos] = useState<ResumenIngresos | null>(null);
+  const [pagosFiltrados, setPagosFiltrados] = useState<any[]>([]);
+  const [cargandoReporte, setCargandoReporte] = useState<boolean>(false);
+
   const getMesAno = (periodo: string) => {
     const [year, month] = periodo.split('-');
     if (!year || !month) return periodo;
@@ -63,13 +79,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     try {
       setLoading(true);
 
-      // Primero actualizar cuotas vencidas
       await cuotaService.actualizarCuotasVencidas();
-
-      // Luego generar cuotas del mes actual si faltan
       await cuotaService.generarCuotasMesActual();
 
-      // Luego cargar todas las cuotas, personas y deportes en paralelo
       const [cuotasRes, personasRes, deportesRes, pagosRes] = await Promise.all([
         cuotaService.getAll(),
         personaService.getAll(),
@@ -84,11 +96,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       setDeportes(deportesData);
       setPagosServidor(Array.isArray(pagosRes.data) ? pagosRes.data : []);
 
-      // Mapear por ID para acceso rápido
       const personaMap = new Map<number, Persona>(personasData.map(p => [Number(p.id), p] as const));
       const deporteMap = new Map<number, Deporte>(deportesData.map(d => [Number(d.id), d] as const));
 
-      // Transformar cuotas a pagos para mostrar en la tabla
       const pagosTransformados = cuotasData.map((cuota, idx) => {
         const p = personaMap.get(Number(cuota.personaId));
         const d = deporteMap.get(Number(cuota.deporteId));
@@ -119,7 +129,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     }
   }, []);
 
-  // Cargar cuotas del backend al montar
   useEffect(() => {
     cargarCuotas();
   }, [cargarCuotas]);
@@ -184,7 +193,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   };
 
   const generarArchivoRedLink = () => {
-    // En producción, esto generaría el archivo real según especificaciones de Red Link
     const pagosPendientes = pagos.filter(p => p.estado === 'pendiente' && p.metodoPago === 'DEBITO_AUTOMATICO');
     
     if (pagosPendientes.length === 0) {
@@ -192,7 +200,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return;
     }
 
-    // Simular generación de archivo
     const contenido = pagosPendientes.map(p => 
       `${p.socioDNI}|${p.socio}|${p.monto}|${p.mes}`
     ).join('\n');
@@ -207,11 +214,123 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     toast.success('Archivo de Red Link generado correctamente');
   };
 
+  const formatearFechaDisplay = (fechaStr?: string) => {
+    if (!fechaStr) return '—';
+    const f = fechaStr.split('T')[0];
+    const parts = f.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return f;
+  };
+
+  const ejecutarFiltroLocal = useCallback(() => {
+    const coincide = (fechaStr?: string) => {
+      if (!fechaStr) return false;
+      const f = fechaStr.split('T')[0].trim();
+      if (modoFiltroFecha === 'dia') {
+        return f === fechaFiltro;
+      }
+      if (fechaDesdeFiltro && fechaHastaFiltro) {
+        return f >= fechaDesdeFiltro && f <= fechaHastaFiltro;
+      }
+      if (fechaDesdeFiltro) return f >= fechaDesdeFiltro;
+      if (fechaHastaFiltro) return f <= fechaHastaFiltro;
+      return true;
+    };
+
+    if (Array.isArray(pagosServidor) && pagosServidor.length > 0) {
+      const filtrados = pagosServidor.filter(p => coincide(p.fechaPago));
+      const totalRecaudado = filtrados.reduce((sum, p) => sum + (Number(p.montoTotal) || 0), 0);
+      const totalEntrenador = filtrados.reduce((sum, p) => sum + (Number(p.cuotaEntrenador) || 0), 0);
+      const totalSeguro = filtrados.reduce((sum, p) => sum + (Number(p.cuotaSeguro) || 0), 0);
+      const totalSocial = filtrados.reduce((sum, p) => sum + (Number(p.cuotaSocial) || 0), 0);
+
+      setResumenIngresos({
+        cantidadIngresos: filtrados.length,
+        montoTotal: totalRecaudado,
+        totalEntrenador,
+        totalSeguro,
+        totalSocial,
+      });
+      setPagosFiltrados(filtrados);
+      toast.success(`Se encontraron ${filtrados.length} ingresos`);
+    } else {
+      const cuotasPagadas = cuotas.filter(c => c.estado === 'PAGADA' && coincide(c.fechaGeneracion));
+      const total = cuotasPagadas.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
+      const totalEntrenador = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaEntrenador) || 0), 0);
+      const totalSeguro = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaSeguro) || 0), 0);
+      const totalSocial = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaSocial) || 0), 0);
+
+      const adaptados = cuotasPagadas.map((c, idx) => ({
+        id: c.pagoId || c.id || idx,
+        socioId: c.personaId,
+        fechaPago: c.fechaGeneracion,
+        montoTotal: c.monto,
+        cuotaEntrenador: c.cuotaEntrenador || 0,
+        cuotaSeguro: c.cuotaSeguro || 0,
+        cuotaSocial: c.cuotaSocial || 0,
+        metodoPago: 'TRANSFERENCIA',
+        observaciones: c.concepto || 'Cobro de cuota',
+      }));
+
+      setResumenIngresos({
+        cantidadIngresos: adaptados.length,
+        montoTotal: total,
+        totalEntrenador,
+        totalSeguro,
+        totalSocial,
+      });
+      setPagosFiltrados(adaptados);
+      toast.success(`Se encontraron ${adaptados.length} ingresos`);
+    }
+  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, pagosServidor, cuotas]);
+
+  const consultarIngresosPorFecha = useCallback(async () => {
+    setCargandoReporte(true);
+    const params: FiltroFechaParams = {};
+    if (modoFiltroFecha === 'dia') {
+      if (!fechaFiltro) {
+        toast.error('Selecciona una fecha');
+        setCargandoReporte(false);
+        return;
+      }
+      params.fecha = fechaFiltro;
+    } else {
+      if (!fechaDesdeFiltro && !fechaHastaFiltro) {
+        toast.error('Ingresa al menos una fecha desde o hasta');
+        setCargandoReporte(false);
+        return;
+      }
+      if (fechaDesdeFiltro) params.fechaDesde = fechaDesdeFiltro;
+      if (fechaHastaFiltro) params.fechaHasta = fechaHastaFiltro;
+    }
+
+    try {
+      const [resumenRes, listadoRes] = await Promise.all([
+        pagoService.getResumenIngresos(params),
+        pagoService.getByFechaORango(params),
+      ]);
+
+      if (resumenRes?.data && listadoRes?.data) {
+        const lista = Array.isArray(listadoRes.data) ? listadoRes.data : [];
+        setResumenIngresos(resumenRes.data);
+        setPagosFiltrados(lista);
+        toast.success(`Se encontraron ${resumenRes.data.cantidadIngresos ?? lista.length} ingresos`);
+      } else {
+        ejecutarFiltroLocal();
+      }
+    } catch (error) {
+      ejecutarFiltroLocal();
+    } finally {
+      setCargandoReporte(false);
+    }
+  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, ejecutarFiltroLocal]);
+
   const generarReporte = (tipo: 'ingresos' | 'deudas') => {
     if (tipo === 'ingresos') {
-      const ingresos = pagos.filter(p => p.estado === 'pagado');
-      const total = ingresos.reduce((sum, p) => sum + p.monto, 0);
-      toast.success(`Reporte de ingresos: $${total.toLocaleString()}`);
+      setActiveTab('ingresos-fecha');
+      consultarIngresosPorFecha();
     } else {
       const deudas = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido');
       const total = deudas.reduce((sum, p) => sum + p.monto, 0);
@@ -449,13 +568,17 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="todos">
-            <TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="flex flex-wrap">
               <TabsTrigger value="todos">Cuotas</TabsTrigger>
               <TabsTrigger value="pagados">Pagadas</TabsTrigger>
               <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
               <TabsTrigger value="vencidos">Vencidas</TabsTrigger>
               <TabsTrigger value="pagos">Pagos</TabsTrigger>
+              <TabsTrigger value="ingresos-fecha" className="flex items-center gap-1.5">
+                <Calendar className="w-4 h-4" />
+                Ingresos por Fecha
+              </TabsTrigger>
             </TabsList>
 
             {['todos', 'pagados', 'pendientes', 'vencidos'].map((tab) => (
@@ -525,7 +648,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              {pago.fecha ? new Date(pago.fecha).toLocaleDateString() : '-'}
+                              {pago.fecha ? formatearFechaDisplay(pago.fecha) : '-'}
                             </TableCell>
                             <TableCell>
                               <Badge variant={getEstadoBadge(pago.estado) as any}>
@@ -542,7 +665,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
             {/* Lista alterna de Pagos */}
             <TabsContent value="pagos">
-              {/* Filtros por deporte y mes */}
               <div className="mb-4 flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex items-center gap-3">
                   <Label htmlFor="filterDeportePago" className="whitespace-nowrap">Filtrar por deporte:</Label>
@@ -602,7 +724,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     {Array.isArray(pagosServidor) && pagosServidor.length > 0 ? (
                       pagosServidor
                         .filter((pago: any) => {
-                          // Si no hay filtro de deporte, mostrar todos
                           const matchesDeporte = (() => {
                             if (filterDeportePago === 'all') return true;
                             const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
@@ -612,7 +733,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           const matchesMes = (() => {
                             if (filterMesPago === 'all') return true;
                             if (!pago.fechaPago) return false;
-                            const mesPago = new Date(pago.fechaPago).getMonth() + 1; // 1-12
+                            const mesPago = new Date(pago.fechaPago).getMonth() + 1;
                             return mesPago === Number(filterMesPago);
                           })();
 
@@ -659,7 +780,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <TableCell>{socio?.dni || '—'}</TableCell>
                               <TableCell>{deportesNombres || '—'}</TableCell>
                               <TableCell>${(pago.montoTotal || 0).toLocaleString()}</TableCell>
-                              <TableCell>{pago.fechaPago ? new Date(pago.fechaPago).toLocaleDateString('es-ES') : '—'}</TableCell>
+                              <TableCell>{formatearFechaDisplay(pago.fechaPago)}</TableCell>
                               <TableCell>{pago.observaciones || '—'}</TableCell>
                             </TableRow>
                             {isExpanded && hasConceptos && (
@@ -715,10 +836,194 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </Table>
               </div>
             </TabsContent>
+
+            {/* Listado y Reporte por Fecha o Rango */}
+            <TabsContent value="ingresos-fecha" className="space-y-4">
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-base">Consulta de Ingresos por Fecha o Período</h3>
+                    <p className="text-sm text-gray-500">Consulta cuántos ingresos hubo y el total recaudado en una fecha fija o rango.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={modoFiltroFecha === 'dia' ? 'default' : 'outline'}
+                      onClick={() => setModoFiltroFecha('dia')}
+                    >
+                      Día puntual
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={modoFiltroFecha === 'rango' ? 'default' : 'outline'}
+                      onClick={() => setModoFiltroFecha('rango')}
+                    >
+                      Período / Rango
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3 pt-2">
+                  {modoFiltroFecha === 'dia' ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="filtro-fecha-dia">Fecha del ingreso</Label>
+                      <Input
+                        id="filtro-fecha-dia"
+                        type="date"
+                        value={fechaFiltro}
+                        onChange={(e) => setFechaFiltro(e.target.value)}
+                        className="w-48"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="filtro-fecha-desde">Fecha Desde</Label>
+                        <Input
+                          id="filtro-fecha-desde"
+                          type="date"
+                          value={fechaDesdeFiltro}
+                          onChange={(e) => setFechaDesdeFiltro(e.target.value)}
+                          className="w-44"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="filtro-fecha-hasta">Fecha Hasta</Label>
+                        <Input
+                          id="filtro-fecha-hasta"
+                          type="date"
+                          value={fechaHastaFiltro}
+                          onChange={(e) => setFechaHastaFiltro(e.target.value)}
+                          className="w-44"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <Button onClick={consultarIngresosPorFecha} disabled={cargandoReporte} className="gap-2">
+                    <Search className="w-4 h-4" />
+                    {cargandoReporte ? 'Consultando...' : 'Buscar Ingresos'}
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setModoFiltroFecha('dia');
+                      setFechaFiltro(getFechaHoy());
+                      setFechaDesdeFiltro('');
+                      setFechaHastaFiltro('');
+                      setResumenIngresos(null);
+                      setPagosFiltrados([]);
+                    }}
+                  >
+                    Limpiar / Hoy
+                  </Button>
+                </div>
+              </div>
+
+              {resumenIngresos && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <Card className="bg-blue-50 border-blue-200">
+                    <CardHeader className="pb-2">
+                      <CardDescription>Cantidad de Ingresos</CardDescription>
+                      <CardTitle className="text-2xl font-bold text-blue-700">
+                        {resumenIngresos.cantidadIngresos} {resumenIngresos.cantidadIngresos === 1 ? 'cobro' : 'cobros'}
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card className="bg-green-50 border-green-200">
+                    <CardHeader className="pb-2">
+                      <CardDescription>Monto Total Recaudado</CardDescription>
+                      <CardTitle className="text-2xl font-bold text-green-700">
+                        ${(resumenIngresos.montoTotal || 0).toLocaleString()}
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>Cuota Social</CardDescription>
+                      <CardTitle className="text-xl font-semibold">
+                        ${(resumenIngresos.totalSocial || 0).toLocaleString()}
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>Cuota Entrenador</CardDescription>
+                      <CardTitle className="text-xl font-semibold">
+                        ${(resumenIngresos.totalEntrenador || 0).toLocaleString()}
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>Cuota Seguro</CardDescription>
+                      <CardTitle className="text-xl font-semibold">
+                        ${(resumenIngresos.totalSeguro || 0).toLocaleString()}
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
+                </div>
+              )}
+
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Socio</TableHead>
+                      <TableHead>DNI</TableHead>
+                      <TableHead>Deportes</TableHead>
+                      <TableHead>Monto Total</TableHead>
+                      <TableHead>Método</TableHead>
+                      <TableHead>Fecha de Pago</TableHead>
+                      <TableHead>Observaciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagosFiltrados.length > 0 ? (
+                      pagosFiltrados.map((pago: any) => {
+                        const socio = personas.find(p => Number(p.id) === Number(pago.socioId));
+                        const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
+                        const deportesNombres = cuotasDePago
+                          .map(c => {
+                            const deporte = deportes.find(d => Number(d.id) === Number(c.deporteId));
+                            return deporte?.nombre || 'Deporte';
+                          })
+                          .filter(Boolean)
+                          .join(', ') || '—';
+
+                        return (
+                          <TableRow key={`filtro-${pago.id}`}>
+                            <TableCell className="font-medium">{socio ? `${socio.nombre} ${socio.apellido}` : '—'}</TableCell>
+                            <TableCell>{socio?.dni || '—'}</TableCell>
+                            <TableCell>{deportesNombres}</TableCell>
+                            <TableCell className="font-semibold text-green-700">${(pago.montoTotal || 0).toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{getMetodoPagoLabel(pago.metodoPago)}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {formatearFechaDisplay(pago.fechaPago)}
+                            </TableCell>
+                            <TableCell>{pago.observaciones || '—'}</TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                          {cargandoReporte ? 'Buscando ingresos...' : 'No se encontraron ingresos registrados para el criterio seleccionado.'}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
-
     </div>
   );
 }

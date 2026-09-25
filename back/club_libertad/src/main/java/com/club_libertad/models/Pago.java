@@ -12,7 +12,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Entity
-@Table(name = "pago")
+@Table(name = "pago", indexes = {
+    @Index(name = "idx_pago_fecha_pago", columnList = "fecha_pago")
+})
 @Data
 @EqualsAndHashCode(exclude = {"cuotas"})
 @NoArgsConstructor

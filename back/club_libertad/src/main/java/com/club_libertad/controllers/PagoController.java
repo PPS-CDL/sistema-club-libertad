@@ -4,15 +4,19 @@ import com.club_libertad.dtos.PagoDTO;
 import com.club_libertad.models.Pago;
 import com.club_libertad.services.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController(value = "pagoController")
 public class PagoController {
     private final PagoService pagoService;
+
     public PagoController(PagoService pagoService) {
         this.pagoService = pagoService;
     }
@@ -48,5 +52,30 @@ public class PagoController {
             System.out.println(e.getMessage());
         }
         return response;
+    }
+
+    @GetMapping("/pagos/filtro")
+    @Operation(summary = "Obtiene listado de pagos por fecha o rango de fechas")
+    public ResponseEntity<List<Pago>> getPagosPorFecha(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta) {
+        
+        List<Pago> pagos = pagoService.getPagosPorFechaORango(fecha, fechaDesde, fechaHasta);
+        if (pagos.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(pagos);
+    }
+
+    @GetMapping("/pagos/resumen-ingresos")
+    @Operation(summary = "Obtiene total recaudado y conteo de ingresos por fecha o periodo")
+    public ResponseEntity<Map<String, Object>> getResumenIngresos(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta) {
+        
+        Map<String, Object> resumen = pagoService.getResumenIngresos(fecha, fechaDesde, fechaHasta);
+        return ResponseEntity.ok(resumen);
     }
 }
