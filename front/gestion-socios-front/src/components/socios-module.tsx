@@ -19,6 +19,8 @@ import type { Deporte } from '../types/deporte';
 import type { Registro } from '../types/registro';
 import type { Promocion } from '../types/promocion';
 import { Checkbox } from './ui/checkbox';
+import type { Cuota } from '../types/cuota';
+import cuotaService from '../services/cuotaService';
 
 // Usamos directamente el tipo Persona del backend
 type Socio = Persona & {
@@ -62,6 +64,9 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
 
 export function SociosModule({ userRole }: SociosModuleProps) {
   const [socios, setSocios] = useState<Socio[]>([]);
+  const [expandedSocioId, setExpandedSocioId] = useState<string | null>(null);
+  const [cuotasPorSocio, setCuotasPorSocio] = useState<Record<string, Cuota[]>>({});
+  const [loadingCuotasId, setLoadingCuotasId] = useState<string | null>(null);
   const [deportes, setDeportes] = useState<Deporte[]>([]);
   const [promociones, setPromociones] = useState<Promocion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,6 +495,30 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
   if (loading) return <div>Cargando socios...</div>;
   if (error) return <div>Error: {error}</div>;
+
+  const toggleExpandSocio = async (socioId: string) => {
+    if (expandedSocioId === socioId) {
+      setExpandedSocioId(null);
+      return;
+    }
+
+    setExpandedSocioId(socioId);
+
+    if (!cuotasPorSocio[socioId]) {
+      try {
+        setLoadingCuotasId(socioId);
+        const response = await cuotaService.getByPersonaId(Number(socioId));
+        setCuotasPorSocio(prev => ({
+          ...prev,
+          [socioId]: response.data || [],
+        }));
+      } catch (error) {
+        console.error('Error al cargar cuotas del socio:', error);
+      } finally {
+        setLoadingCuotasId(null);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -984,7 +1013,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       <TableHead>Categoría</TableHead>
                       <TableHead>Edad</TableHead>
                       <TableHead>Contacto</TableHead>
-                      <TableHead>Deportes</TableHead>
                       <TableHead>Fecha de Registro</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -998,7 +1026,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </TableRow>
                     ) : (
                       filteredSocios.map((socio) => (
-                        <TableRow key={socio.id}>
+                        <>
+                          <TableRow 
+                            key={socio.id}
+                            onClick={() => toggleExpandSocio(socio.id)}
+                            className="cursor-pointer hover:bg-muted/50"
+                          >
                           <TableCell>
                             <div>
                               <div>{socio.apellido}, {socio.nombre}</div>
@@ -1030,19 +1063,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {getDeportesNombres(socio.deportesIds).length > 0 ? (
-                                getDeportesNombres(socio.deportesIds).map((deporte, idx) => (
-                                  <Badge key={idx} variant="secondary" className="text-xs">
-                                    {deporte}
-                                  </Badge>
-                                ))
-                              ) : (
-                                <span className="text-sm text-gray-400">Sin deportes</span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
                             <div className="text-sm">{formatDate(socio.fechaRegistro)}</div>
                           </TableCell>
                           <TableCell className="text-right">
@@ -1070,9 +1090,61 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                   <Trash2 className="w-4 h-4 text-red-600" />
                                 </Button>
                               )}
+                        
                             </div>
                           </TableCell>
                         </TableRow>
+                          {expandedSocioId === socio.id && (
+                            <TableRow key={`expanded-${socio.id}`}>
+                              <TableCell colSpan={7} className="bg-gray-50 p-0">
+                                <div className="p-4">
+                                  {loadingCuotasId === socio.id ? (
+                                    <div className="text-sm text-gray-500">Cargando cuotas...</div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <div className="text-sm font-medium text-gray-700">
+                                        Deportes y estado de cuota
+                                      </div>
+                                      {(!cuotasPorSocio[socio.id] || cuotasPorSocio[socio.id].length === 0) ? (
+                                        <div className="text-sm text-gray-500">Sin cuotas asociadas</div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          {cuotasPorSocio[socio.id].map((cuota) => {
+                                            const deporte = deportes.find(d => Number(d.id) === cuota.deporteId);
+                                            const nombreDeporte = deporte?.nombre || `Deporte ${cuota.deporteId}`;
+                                            const isPagada = cuota.estado === 'PAGADA';
+                                            const isPendiente = cuota.estado === 'GENERADA';
+                                            const isVencida = cuota.estado === 'VENCIDA';
+                                            return (
+                                              <div
+                                                key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
+                                                className="flex items-center justify-between rounded-md border bg-white px-3 py-2"
+                                              >
+                                                <div>
+                                                  <div className="font-medium">{nombreDeporte}</div>
+                                                  <div className="text-xs text-gray-500">{cuota.periodo}</div>
+                                                </div>
+                                                  <Badge
+                                                    variant="outline"
+                                                    style={isPagada 
+                                                      ? { borderColor: '#16a34a', backgroundColor: '#dcfce7', color: '#15803d' }
+                                                      : { borderColor: '#dc2626', backgroundColor: '#fee2e2', color: '#b91c1c' }
+                                                    }
+                                                  >
+                                                    {isPagada ? 'PAGADA' : isPendiente ? 'PENDIENTE' : 'VENCIDA'}
+                                                  </Badge>
+                                            </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
                       ))
                     )}
                   </TableBody>
