@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 @Entity
 @Table(name = "persona")
 @Data
-@EqualsAndHashCode(exclude = {"deportes", "socioResponsable", "promocion"})
+@EqualsAndHashCode(exclude = {"deportes", "socioResponsable", "promocion", "grupoFamiliar"})
 @AllArgsConstructor
 @NoArgsConstructor
 public class Persona {
@@ -73,6 +73,16 @@ public class Persona {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promocion_id")
     private Promocion promocion;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "grupo_familiar_id")
+    private GrupoFamiliar grupoFamiliar;
+
+    @JsonProperty("grupoFamiliarId")
+    public Long getGrupoFamiliarId() {
+        return grupoFamiliar != null ? grupoFamiliar.getId() : null;
+    }
 
     @JsonProperty("socioResponsableId")
     public Long getSocioResponsableId() {
