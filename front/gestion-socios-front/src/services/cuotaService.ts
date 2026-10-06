@@ -8,6 +8,7 @@ const CUOTA_ENDPOINTS = {
   CHANGE_STATE: (id: number) => `/cuota/${id}`,
   GENERAR_MES_ACTUAL: '/cuotas/generar-mes-actual',
   ACTUALIZAR_VENCIDAS: '/cuotas/actualizar-vencidas',
+  GET_BY_PERSONA_ID: (personaId: number) => `/cuotas/persona/${personaId}`,
 };
 
 const cuotaService = {
@@ -49,6 +50,13 @@ const cuotaService = {
   actualizarCuotasVencidas() {
     return api.post<string>(CUOTA_ENDPOINTS.ACTUALIZAR_VENCIDAS).catch(error => {
       console.error('Error al actualizar cuotas vencidas:', error);
+      throw error;
+    });
+  },
+
+    getByPersonaId(personaId: number) {
+    return api.get<Cuota[]>(`/cuotas/persona/${personaId}`).catch(error => {
+      console.error(`Error al obtener cuotas de la persona con ID ${personaId}:`, error);
       throw error;
     });
   },

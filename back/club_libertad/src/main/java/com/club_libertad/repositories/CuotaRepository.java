@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface CuotaRepository extends JpaRepository<Cuota, Long> {
@@ -15,4 +16,6 @@ public interface CuotaRepository extends JpaRepository<Cuota, Long> {
     Optional<Cuota> findByPersonaDeporteAndPeriodo(@Param("personaId") Long personaId, @Param("deporteId") Long deporteId, @Param("periodo") LocalDate periodo);
     
     void deleteByPersonaId_Id(Long personaId);
+
+    List<Cuota> findByPersonaId_Id(Long personaId);
 }

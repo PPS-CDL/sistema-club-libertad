@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -215,4 +216,30 @@ public class CuotaService {
         return cuotasVencidas;
     }
 
+    @Transactional(readOnly = true)
+    public List<CuotaDTO> getCuotasByPersonaId(Long personaId) {
+        List<Cuota> cuotas = cuotaRepository.findByPersonaId_Id(personaId);
+
+        List<CuotaDTO> respuesta = new ArrayList<>();
+
+        for (Cuota cuota : cuotas) {
+            CuotaDTO dto = new CuotaDTO();
+            dto.setPersonaId(cuota.getPersonaId() != null ? cuota.getPersonaId().getId() : null);
+            dto.setDeporteId(cuota.getDeporteId() != null ? cuota.getDeporteId().getId() : null);
+            dto.setPeriodo(cuota.getPeriodo());
+            dto.setMonto(cuota.getMonto());
+            dto.setEstado(cuota.getEstado());
+            dto.setFechaVencimiento(cuota.getFechaVencimiento());
+            dto.setConcepto(cuota.getConcepto());
+            dto.setPagoId(cuota.getPagoId() != null ? cuota.getPagoId().getId() : null);
+            respuesta.add(dto);
+        }
+
+        return respuesta;
+    }
 }
+    
+
+                    
+
+

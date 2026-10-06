@@ -85,4 +85,14 @@ public class CuotaController {
         }
     }
 
+    @GetMapping("/cuotas/persona/{personaId}")
+    @Operation(summary = "Obtiene todas las cuotas de una persona")
+    public ResponseEntity<List<CuotaDTO>> getCuotasByPersonaId(@PathVariable Long personaId) {
+        ResponseEntity<List<CuotaDTO>> response = ResponseEntity.noContent().build();
+        List<CuotaDTO> cuotas = cuotaService.getCuotasByPersonaId(personaId);
+        if (!cuotas.isEmpty()) response = ResponseEntity.ok(cuotas);
+        return response;
+    }
 }
+
+
