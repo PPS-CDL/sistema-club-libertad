@@ -3,21 +3,16 @@ package com.club_libertad.services;
 import com.club_libertad.dtos.PersonaDTO;
 import com.club_libertad.exceptions.RegistroDuplicadoException;
 import com.club_libertad.models.Deporte;
+import com.club_libertad.models.GrupoFamiliar;
 import com.club_libertad.models.Persona;
-import com.club_libertad.repositories.DeporteRepository;
-import com.club_libertad.repositories.PersonaRepository;
-import com.club_libertad.repositories.RegistroRepository;
-import com.club_libertad.repositories.InscripcionRepository;
-import com.club_libertad.repositories.CuotaRepository;
-import com.club_libertad.repositories.PagoRepository;
-import com.club_libertad.repositories.PromocionRepository;
+import com.club_libertad.repositories.*;
 import com.club_libertad.models.Registro;
 import com.club_libertad.models.Promocion;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -32,8 +27,9 @@ public class PersonaService {
     private final PagoRepository pagoRepository;
     private final PromocionRepository promocionRepository;
     private final CuotaService cuotaService;
+    private final GrupoFamiliarRepository grupoFamiliarRepository;
 
-    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService) {
+    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService, GrupoFamiliarRepository grupoFamiliarRepository) {
         this.personaRepository = personaRepository;
         this.deporteRepository = deporteRepository;
         this.registroRepository = registroRepository;
@@ -42,6 +38,7 @@ public class PersonaService {
         this.pagoRepository = pagoRepository;
         this.promocionRepository = promocionRepository;
         this.cuotaService = cuotaService;
+        this.grupoFamiliarRepository = grupoFamiliarRepository;
     }
 
     @Transactional(readOnly = true)
@@ -125,10 +122,16 @@ public class PersonaService {
     @Transactional
     public boolean cambiarEstadoPersona(Long id, String observacionBaja){
         boolean b = false;
-        Optional<Persona> persona = personaRepository.findById(id);
-        if(persona.isPresent()){
-            persona.get().setActivo(!persona.get().getActivo());
-            String dni = persona.get().getDni();
+        Optional<Persona> personaOpt = personaRepository.findById(id);
+        if(personaOpt.isPresent()){
+           Persona persona = personaOpt.get();
+            boolean nuevoEstado = !persona.getActivo();
+            persona.setActivo(nuevoEstado);
+
+            if (!nuevoEstado) {
+                revisarYDisolverGrupoFamiliar(persona);
+            }
+            String dni = persona.getDni();
             Optional<Registro> registro = registroRepository.findByDni(dni);
             if(registro.isPresent()){
                 if(registro.get().getFechaBaja() == null){
@@ -219,6 +222,7 @@ public class PersonaService {
         if(personaRepository.existsById(id)){
             Optional<Persona> persona = personaRepository.findById(id);
             if(persona.isPresent()){
+                revisarYDisolverGrupoFamiliar(persona.get());
                 // Actualizar el registro con la fecha de baja y observación
                 String dni = persona.get().getDni();
                 Optional<Registro> registro = registroRepository.findByDni(dni);
@@ -258,5 +262,42 @@ public class PersonaService {
             }
         }
         return false;
+    }
+
+    // Método para revisar si la persona inactiva es responsable de un grupo familiar y disolverlo si es necesario.
+    private void revisarYDisolverGrupoFamiliar(Persona personaInactiva) {
+        GrupoFamiliar grupo = personaInactiva.getGrupoFamiliar();
+        if (grupo == null) {
+            return;
+    
+        }
+        boolean esResponsable = grupo.getResponsable() != null && grupo.getResponsable().getId().equals(personaInactiva.getId());
+        
+        // Calcular total de integrantes reales
+        int totalIntegrantes = grupo.getIntegrantes().size();
+        boolean responsableIncluidoEnLista = grupo.getIntegrantes().stream()
+                .anyMatch(p -> grupo.getResponsable() != null && p.getId().equals(grupo.getResponsable().getId()));
+        
+        if (grupo.getResponsable() != null && !responsableIncluidoEnLista) {
+            totalIntegrantes++;
+        }
+        // Si es el responsable o el grupo quedará con menos de 3 personas -> DISOLVER EL GRUPO
+        if (esResponsable || totalIntegrantes <= 3) {
+            if (grupo.getResponsable() != null) {
+                grupo.getResponsable().setGrupoFamiliar(null);
+                personaRepository.save(grupo.getResponsable());
+            }
+            // Evitar ConcurrentModificationException utilizando una copia de la lista
+            List<Persona> integrantesCopia = new ArrayList<>(grupo.getIntegrantes());
+            for (Persona p : integrantesCopia) {
+                p.setGrupoFamiliar(null);
+                personaRepository.save(p);
+            }
+            grupoFamiliarRepository.delete(grupo);
+        } else {
+            // Si el grupo sobrevive, solo se quita la persona inactiva
+            personaInactiva.setGrupoFamiliar(null);
+            personaRepository.save(personaInactiva);
+        }
     }
 }

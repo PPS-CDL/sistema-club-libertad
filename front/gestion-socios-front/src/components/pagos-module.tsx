@@ -1,23 +1,64 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Download, FileText, DollarSign, TrendingUp, AlertCircle, ChevronDown, ChevronRight, Calendar, Search } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { toast } from 'sonner@2.0.3';
-import cuotaService from '../services/cuotaService';
-import pagoService, { type IngresoPorSocioDTO, type FiltroFechaParams, type ResumenIngresos } from '../services/pagoService';
-import personaService from '../services/personaService';
-import deporteService from '../services/deporteService';
-import type { Cuota } from '../types/cuota';
-import type { Persona } from '../types/persona';
-import type { Deporte } from '../types/deporte';
-import { Checkbox } from './ui/checkbox';
+import { useEffect, useState, useCallback } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { Badge } from "./ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import {
+  Plus,
+  Download,
+  FileText,
+  DollarSign,
+  TrendingUp,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Calendar,
+  Search,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { toast } from "sonner@2.0.3";
+import cuotaService from "../services/cuotaService";
+import pagoService, {
+  type IngresoPorSocioDTO,
+  type FiltroFechaParams,
+  type ResumenIngresos,
+} from "../services/pagoService";
+import personaService from "../services/personaService";
+import deporteService from "../services/deporteService";
+import type { Cuota } from "../types/cuota";
+import type { Persona } from "../types/persona";
+import type { Deporte } from "../types/deporte";
+import { Checkbox } from "./ui/checkbox";
 
 interface Pago {
   id: string;
@@ -26,8 +67,8 @@ interface Pago {
   monto: number;
   fecha: string;
   mes: string;
-  metodoPago: 'EFECTIVO' | 'TRANSFERENCIA' | 'DEBITO_AUTOMATICO';
-  estado: 'pagado' | 'pendiente' | 'vencido';
+  metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
+  estado: "pagado" | "pendiente" | "vencido";
   conceptos: {
     concepto: string;
     monto: number;
@@ -35,7 +76,7 @@ interface Pago {
 }
 
 interface PagosModuleProps {
-  userRole: 'admin' | 'secretario';
+  userRole: "admin" | "secretario";
 }
 
 export function PagosModule({ userRole }: PagosModuleProps) {
@@ -43,39 +84,59 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [cuotas, setCuotas] = useState<Cuota[]>([]);
   const [loading, setLoading] = useState(true);
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [ingresosPorSocio, setIngresosPorSocio] = useState<IngresoPorSocioDTO[]>([]);
-  const [searchIngresosPorSocio, setSearchIngresosPorSocio] = useState<string>('');
+  const [ingresosPorSocio, setIngresosPorSocio] = useState<
+    IngresoPorSocioDTO[]
+  >([]);
+  const [searchIngresosPorSocio, setSearchIngresosPorSocio] =
+    useState<string>("");
   const [deportes, setDeportes] = useState<Deporte[]>([]);
   const [pagosServidor, setPagosServidor] = useState<any[]>([]);
-  const [searchCuota, setSearchCuota] = useState<string>('');
-  const [filterDeportePago, setFilterDeportePago] = useState<string>('all');
-  const [filterMesPago, setFilterMesPago] = useState<string>('all');
-  const [filterSocioPago, setFilterSocioPago] = useState<string>('all');
+  const [searchCuota, setSearchCuota] = useState<string>("");
+  const [filterDeportePago, setFilterDeportePago] = useState<string>("all");
+  const [filterMesPago, setFilterMesPago] = useState<string>("all");
+  const [filterSocioPago, setFilterSocioPago] = useState<string>("all");
   const [expandedPagos, setExpandedPagos] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<string>('todos');
+  const [activeTab, setActiveTab] = useState<string>("todos");
 
   const getFechaHoy = () => {
     const d = new Date();
     const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const [modoFiltroFecha, setModoFiltroFecha] = useState<'dia' | 'rango'>('dia');
+  const [modoFiltroFecha, setModoFiltroFecha] = useState<"dia" | "rango">(
+    "dia",
+  );
   const [fechaFiltro, setFechaFiltro] = useState<string>(getFechaHoy());
-  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>('');
-  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>('');
-  const [resumenIngresos, setResumenIngresos] = useState<ResumenIngresos | null>(null);
+  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>("");
+  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>("");
+  const [resumenIngresos, setResumenIngresos] =
+    useState<ResumenIngresos | null>(null);
   const [pagosFiltrados, setPagosFiltrados] = useState<any[]>([]);
   const [cargandoReporte, setCargandoReporte] = useState<boolean>(false);
 
   const getMesAno = (periodo: string) => {
-    const [year, month] = periodo.split('-');
+    const [year, month] = periodo.split("-");
     if (!year || !month) return periodo;
     const mesNum = parseInt(month, 10);
-    const meses = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    return `${meses[mesNum] || 'mes'} de ${year}`;
+    const meses = [
+      "",
+      "enero",
+      "febrero",
+      "marzo",
+      "abril",
+      "mayo",
+      "junio",
+      "julio",
+      "agosto",
+      "septiembre",
+      "octubre",
+      "noviembre",
+      "diciembre",
+    ];
+    return `${meses[mesNum] || "mes"} de ${year}`;
   };
 
   const cargarCuotas = useCallback(async () => {
@@ -86,7 +147,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       await cuotaService.generarCuotasMesActual();
 
       // Luego cargar todas las cuotas, personas, deportes e ingresos por socio en paralelo
-      const [cuotasRes, personasRes, deportesRes, pagosRes, ingresosPorSocioRes] = await Promise.all([
+      const [
+        cuotasRes,
+        personasRes,
+        deportesRes,
+        pagosRes,
+        ingresosPorSocioRes,
+      ] = await Promise.all([
         cuotaService.getAll(),
         personaService.getAll(),
         deporteService.getAll(),
@@ -94,32 +161,58 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         pagoService.getIngresosPorSocio(),
       ]);
       const cuotasData = Array.isArray(cuotasRes.data) ? cuotasRes.data : [];
-      const personasData = Array.isArray(personasRes.data) ? personasRes.data : [];
-      const deportesData = Array.isArray(deportesRes.data) ? deportesRes.data : [];
+      const personasData = Array.isArray(personasRes.data)
+        ? personasRes.data
+        : [];
+      const deportesData = Array.isArray(deportesRes.data)
+        ? deportesRes.data
+        : [];
+      const pagosData = Array.isArray(pagosRes.data) ? pagosRes.data : [];
       setCuotas(cuotasData);
       setPersonas(personasData);
       setDeportes(deportesData);
-      setPagosServidor(Array.isArray(pagosRes.data) ? pagosRes.data : []);
-      setIngresosPorSocio(Array.isArray(ingresosPorSocioRes.data) ? ingresosPorSocioRes.data : []);
+      setPagosServidor(pagosData);
+      setIngresosPorSocio(
+        Array.isArray(ingresosPorSocioRes.data) ? ingresosPorSocioRes.data : [],
+      );
 
-      const personaMap = new Map<number, Persona>(personasData.map(p => [Number(p.id), p] as const));
-      const deporteMap = new Map<number, Deporte>(deportesData.map(d => [Number(d.id), d] as const));
-
+      const personaMap = new Map<number, Persona>(
+        personasData.map((p) => [Number(p.id), p] as const),
+      );
+      const deporteMap = new Map<number, Deporte>(
+        deportesData.map((d) => [Number(d.id), d] as const),
+      );
+      const pagoMap = new Map<number, any>(
+        pagosData.map((p) => [Number(p.id), p] as const),
+      );
+      // Transformar cuotas a pagos para mostrar en la tabla
       const pagosTransformados = cuotasData.map((cuota, idx) => {
         const p = personaMap.get(Number(cuota.personaId));
         const d = deporteMap.get(Number(cuota.deporteId));
+        const pagoAsociado = cuota.pagoId
+          ? pagoMap.get(Number(cuota.pagoId))
+          : null;
         return {
           id: (cuota.id || idx).toString(),
           socio: p ? `${p.nombre} ${p.apellido}` : `Persona ${cuota.personaId}`,
-          socioDNI: p?.dni || '',
+          socioDNI: p?.dni || "",
           monto: cuota.monto,
-          fecha: cuota.estado === 'PAGADA' ? cuota.fechaGeneracion : '',
+          fecha: pagoAsociado?.fechaPago
+            ? pagoAsociado.fechaPago
+            : cuota.estado === "PAGADA"
+              ? cuota.fechaGeneracion
+              : "",
           mes: getMesAno(cuota.periodo),
-          metodoPago: 'TRANSFERENCIA' as const,
-          estado: cuota.estado === 'PAGADA' ? 'pagado' : cuota.estado === 'VENCIDA' ? 'vencido' : 'pendiente',
+          metodoPago: pagoAsociado?.metodoPago || "EFECTIVO",
+          estado:
+            cuota.estado === "PAGADA"
+              ? "pagado"
+              : cuota.estado === "VENCIDA"
+                ? "vencido"
+                : "pendiente",
           conceptos: [
             {
-              concepto: cuota.concepto || `${d?.nombre || 'Cuota'}`,
+              concepto: cuota.concepto || `${d?.nombre || "Cuota"}`,
               monto: cuota.monto,
             },
           ],
@@ -128,8 +221,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
       setPagos(pagosTransformados);
     } catch (error) {
-      console.error('Error al cargar cuotas:', error);
-      toast.error('Error al cargar las cuotas');
+      console.error("Error al cargar cuotas:", error);
+      toast.error("Error al cargar las cuotas");
     } finally {
       setLoading(false);
     }
@@ -140,23 +233,30 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   }, [cargarCuotas]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedSocio, setSelectedSocio] = useState('');
+  const [selectedSocio, setSelectedSocio] = useState("");
   const [selectedCuotas, setSelectedCuotas] = useState<number[]>([]);
-  const [metodoPago, setMetodoPago] = useState<'EFECTIVO' | 'TRANSFERENCIA' | 'DEBITO_AUTOMATICO'>('EFECTIVO');
-  const [observaciones, setObservaciones] = useState('');
+  const [metodoPago, setMetodoPago] = useState<
+    "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO"
+  >("EFECTIVO");
+  const [observaciones, setObservaciones] = useState("");
 
   const handleRegistrarPago = async () => {
     if (!selectedSocio || selectedCuotas.length === 0) {
-      toast.error('Selecciona un socio y al menos una cuota');
+      toast.error("Selecciona un socio y al menos una cuota");
       return;
     }
 
-    const socio = personas.find(s => String(s.id) === selectedSocio);
-    const cuotasSeleccionadas = cuotas.filter(c => selectedCuotas.includes(Number(c.id)));
-    const montoOriginal = cuotasSeleccionadas.reduce((sum, c) => sum + (c.monto || 0), 0);
+    const socio = personas.find((s) => String(s.id) === selectedSocio);
+    const cuotasSeleccionadas = cuotas.filter((c) =>
+      selectedCuotas.includes(Number(c.id)),
+    );
+    const montoOriginal = cuotasSeleccionadas.reduce(
+      (sum, c) => sum + (c.monto || 0),
+      0,
+    );
 
     if (montoOriginal <= 0) {
-      toast.error('El monto total debe ser mayor a 0');
+      toast.error("El monto total debe ser mayor a 0");
       return;
     }
 
@@ -165,8 +265,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
     const fechaPago = new Date();
     const yyyy = fechaPago.getFullYear();
-    const mm = String(fechaPago.getMonth() + 1).padStart(2, '0');
-    const dd = String(fechaPago.getDate()).padStart(2, '0');
+    const mm = String(fechaPago.getMonth() + 1).padStart(2, "0");
+    const dd = String(fechaPago.getDate()).padStart(2, "0");
     const fechaPagoStr = `${yyyy}-${mm}-${dd}`;
 
     try {
@@ -181,49 +281,51 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         cuotaIds: selectedCuotas,
       });
 
-      toast.success('Pago registrado correctamente');
+      toast.success("Pago registrado correctamente");
       setIsDialogOpen(false);
       await cargarCuotas();
       resetForm();
     } catch (error) {
-      toast.error('Error al registrar el pago');
-      console.error('Error al registrar pago:', error);
+      toast.error("Error al registrar el pago");
+      console.error("Error al registrar pago:", error);
     }
   };
 
   const resetForm = () => {
-    setSelectedSocio('');
+    setSelectedSocio("");
     setSelectedCuotas([]);
-    setMetodoPago('EFECTIVO');
-    setObservaciones('');
+    setMetodoPago("EFECTIVO");
+    setObservaciones("");
   };
 
   const generarArchivoRedLink = () => {
-    const pagosPendientes = pagos.filter(p => p.estado === 'pendiente' && p.metodoPago === 'DEBITO_AUTOMATICO');
-    
+    const pagosPendientes = pagos.filter(
+      (p) => p.estado === "pendiente" && p.metodoPago === "DEBITO_AUTOMATICO",
+    );
+
     if (pagosPendientes.length === 0) {
-      toast.error('No hay pagos pendientes para débito automático');
+      toast.error("No hay pagos pendientes para débito automático");
       return;
     }
 
-    const contenido = pagosPendientes.map(p => 
-      `${p.socioDNI}|${p.socio}|${p.monto}|${p.mes}`
-    ).join('\n');
-    
-    const blob = new Blob([contenido], { type: 'text/plain' });
+    const contenido = pagosPendientes
+      .map((p) => `${p.socioDNI}|${p.socio}|${p.monto}|${p.mes}`)
+      .join("\n");
+
+    const blob = new Blob([contenido], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `redlink_debitos_${new Date().toISOString().split('T')[0]}.txt`;
+    a.download = `redlink_debitos_${new Date().toISOString().split("T")[0]}.txt`;
     a.click();
-    
-    toast.success('Archivo de Red Link generado correctamente');
+
+    toast.success("Archivo de Red Link generado correctamente");
   };
 
   const formatearFechaDisplay = (fechaStr?: string) => {
-    if (!fechaStr) return '—';
-    const f = fechaStr.split('T')[0];
-    const parts = f.split('-');
+    if (!fechaStr) return "—";
+    const f = fechaStr.split("T")[0];
+    const parts = f.split("-");
     if (parts.length === 3) {
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
@@ -233,8 +335,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const ejecutarFiltroLocal = useCallback(() => {
     const coincide = (fechaStr?: string) => {
       if (!fechaStr) return false;
-      const f = fechaStr.split('T')[0].trim();
-      if (modoFiltroFecha === 'dia') {
+      const f = fechaStr.split("T")[0].trim();
+      if (modoFiltroFecha === "dia") {
         return f === fechaFiltro;
       }
       if (fechaDesdeFiltro && fechaHastaFiltro) {
@@ -246,11 +348,23 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     };
 
     if (Array.isArray(pagosServidor) && pagosServidor.length > 0) {
-      const filtrados = pagosServidor.filter(p => coincide(p.fechaPago));
-      const totalRecaudado = filtrados.reduce((sum, p) => sum + (Number(p.montoTotal) || 0), 0);
-      const totalEntrenador = filtrados.reduce((sum, p) => sum + (Number(p.cuotaEntrenador) || 0), 0);
-      const totalSeguro = filtrados.reduce((sum, p) => sum + (Number(p.cuotaSeguro) || 0), 0);
-      const totalSocial = filtrados.reduce((sum, p) => sum + (Number(p.cuotaSocial) || 0), 0);
+      const filtrados = pagosServidor.filter((p) => coincide(p.fechaPago));
+      const totalRecaudado = filtrados.reduce(
+        (sum, p) => sum + (Number(p.montoTotal) || 0),
+        0,
+      );
+      const totalEntrenador = filtrados.reduce(
+        (sum, p) => sum + (Number(p.cuotaEntrenador) || 0),
+        0,
+      );
+      const totalSeguro = filtrados.reduce(
+        (sum, p) => sum + (Number(p.cuotaSeguro) || 0),
+        0,
+      );
+      const totalSocial = filtrados.reduce(
+        (sum, p) => sum + (Number(p.cuotaSocial) || 0),
+        0,
+      );
 
       setResumenIngresos({
         cantidadIngresos: filtrados.length,
@@ -262,11 +376,25 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       setPagosFiltrados(filtrados);
       toast.success(`Se encontraron ${filtrados.length} ingresos`);
     } else {
-      const cuotasPagadas = cuotas.filter(c => c.estado === 'PAGADA' && coincide(c.fechaGeneracion));
-      const total = cuotasPagadas.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
-      const totalEntrenador = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaEntrenador) || 0), 0);
-      const totalSeguro = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaSeguro) || 0), 0);
-      const totalSocial = cuotasPagadas.reduce((sum, c) => sum + (Number(c.cuotaSocial) || 0), 0);
+      const cuotasPagadas = cuotas.filter(
+        (c) => c.estado === "PAGADA" && coincide(c.fechaGeneracion),
+      );
+      const total = cuotasPagadas.reduce(
+        (sum, c) => sum + (Number(c.monto) || 0),
+        0,
+      );
+      const totalEntrenador = cuotasPagadas.reduce(
+        (sum, c) => sum + (Number(c.cuotaEntrenador) || 0),
+        0,
+      );
+      const totalSeguro = cuotasPagadas.reduce(
+        (sum, c) => sum + (Number(c.cuotaSeguro) || 0),
+        0,
+      );
+      const totalSocial = cuotasPagadas.reduce(
+        (sum, c) => sum + (Number(c.cuotaSocial) || 0),
+        0,
+      );
 
       const adaptados = cuotasPagadas.map((c, idx) => ({
         id: c.pagoId || c.id || idx,
@@ -276,8 +404,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         cuotaEntrenador: c.cuotaEntrenador || 0,
         cuotaSeguro: c.cuotaSeguro || 0,
         cuotaSocial: c.cuotaSocial || 0,
-        metodoPago: 'TRANSFERENCIA',
-        observaciones: c.concepto || 'Cobro de cuota',
+        metodoPago: "TRANSFERENCIA",
+        observaciones: c.concepto || "Cobro de cuota",
       }));
 
       setResumenIngresos({
@@ -290,21 +418,28 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       setPagosFiltrados(adaptados);
       toast.success(`Se encontraron ${adaptados.length} ingresos`);
     }
-  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, pagosServidor, cuotas]);
+  }, [
+    modoFiltroFecha,
+    fechaFiltro,
+    fechaDesdeFiltro,
+    fechaHastaFiltro,
+    pagosServidor,
+    cuotas,
+  ]);
 
   const consultarIngresosPorFecha = useCallback(async () => {
     setCargandoReporte(true);
     const params: FiltroFechaParams = {};
-    if (modoFiltroFecha === 'dia') {
+    if (modoFiltroFecha === "dia") {
       if (!fechaFiltro) {
-        toast.error('Selecciona una fecha');
+        toast.error("Selecciona una fecha");
         setCargandoReporte(false);
         return;
       }
       params.fecha = fechaFiltro;
     } else {
       if (!fechaDesdeFiltro && !fechaHastaFiltro) {
-        toast.error('Ingresa al menos una fecha desde o hasta');
+        toast.error("Ingresa al menos una fecha desde o hasta");
         setCargandoReporte(false);
         return;
       }
@@ -322,7 +457,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         const lista = Array.isArray(listadoRes.data) ? listadoRes.data : [];
         setResumenIngresos(resumenRes.data);
         setPagosFiltrados(lista);
-        toast.success(`Se encontraron ${resumenRes.data.cantidadIngresos ?? lista.length} ingresos`);
+        toast.success(
+          `Se encontraron ${resumenRes.data.cantidadIngresos ?? lista.length} ingresos`,
+        );
       } else {
         ejecutarFiltroLocal();
       }
@@ -331,49 +468,67 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     } finally {
       setCargandoReporte(false);
     }
-  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, ejecutarFiltroLocal]);
+  }, [
+    modoFiltroFecha,
+    fechaFiltro,
+    fechaDesdeFiltro,
+    fechaHastaFiltro,
+    ejecutarFiltroLocal,
+  ]);
 
-  const generarReporte = (tipo: 'ingresos' | 'deudas') => {
-    if (tipo === 'ingresos') {
-      setActiveTab('ingresos-fecha');
+  const generarReporte = (tipo: "ingresos" | "deudas") => {
+    if (tipo === "ingresos") {
+      setActiveTab("ingresos-fecha");
       consultarIngresosPorFecha();
     } else {
-      const deudas = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido');
+      const deudas = pagos.filter(
+        (p) => p.estado === "pendiente" || p.estado === "vencido",
+      );
       const total = deudas.reduce((sum, p) => sum + p.monto, 0);
       toast.success(`Reporte de deudas: $${total.toLocaleString()}`);
     }
   };
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = new Date().toISOString().split("T")[0];
   const estadisticas = {
-    totalIngresos: pagos.filter(p => p.estado === 'pagado').reduce((sum, p) => sum + p.monto, 0),
-    ingresosDia: pagos.filter(p => p.estado === 'pagado' && p.fecha && p.fecha.startsWith(hoy)).reduce((sum, p) => sum + p.monto, 0),
-    totalPendientes: pagos.filter(p => p.estado === 'pendiente').reduce((sum, p) => sum + p.monto, 0),
-    totalVencidos: pagos.filter(p => p.estado === 'vencido').reduce((sum, p) => sum + p.monto, 0),
+    totalIngresos: pagos
+      .filter((p) => p.estado === "pagado")
+      .reduce((sum, p) => sum + p.monto, 0),
+    ingresosDia: pagos
+      .filter(
+        (p) => p.estado === "pagado" && p.fecha && p.fecha.startsWith(hoy),
+      )
+      .reduce((sum, p) => sum + p.monto, 0),
+    totalPendientes: pagos
+      .filter((p) => p.estado === "pendiente")
+      .reduce((sum, p) => sum + p.monto, 0),
+    totalVencidos: pagos
+      .filter((p) => p.estado === "vencido")
+      .reduce((sum, p) => sum + p.monto, 0),
   };
 
   if (loading) return <div>Cargando cuotas...</div>;
 
   const getEstadoBadge = (estado: string) => {
     const variants = {
-      pagado: 'default',
-      pendiente: 'secondary',
-      vencido: 'destructive',
+      pagado: "default",
+      pendiente: "secondary",
+      vencido: "destructive",
     };
-    return variants[estado as keyof typeof variants] || 'default';
+    return variants[estado as keyof typeof variants] || "default";
   };
 
   const getMetodoPagoLabel = (metodo: string) => {
     const labels = {
-      EFECTIVO: 'Efectivo',
-      TRANSFERENCIA: 'Transferencia',
-      DEBITO_AUTOMATICO: 'Débito Automático',
+      EFECTIVO: "Efectivo",
+      TRANSFERENCIA: "Transferencia",
+      DEBITO_AUTOMATICO: "Débito Automático",
     };
     return labels[metodo as keyof typeof labels] || metodo;
   };
 
   const togglePagoExpanded = (pagoId: string) => {
-    setExpandedPagos(prev => {
+    setExpandedPagos((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(pagoId)) {
         newSet.delete(pagoId);
@@ -384,7 +539,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     });
   };
 
-    const ingresosPorSocioFiltrados = ingresosPorSocio.filter((item) => {
+  const ingresosPorSocioFiltrados = ingresosPorSocio.filter((item) => {
     const search = searchIngresosPorSocio.toLowerCase().trim();
     if (!search) return true;
     const nombreCompleto = `${item.nombre} ${item.apellido}`.toLowerCase();
@@ -457,11 +612,17 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 <Download className="w-4 h-4 mr-2" />
                 Archivo Red Link
               </Button>
-              <Button variant="outline" onClick={() => generarReporte('ingresos')}>
+              <Button
+                variant="outline"
+                onClick={() => generarReporte("ingresos")}
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Reporte Ingresos
               </Button>
-              <Button variant="outline" onClick={() => generarReporte('deudas')}>
+              <Button
+                variant="outline"
+                onClick={() => generarReporte("deudas")}
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Reporte Deudas
               </Button>
@@ -476,21 +637,32 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   <DialogHeader>
                     <DialogTitle>Registrar Nuevo Pago</DialogTitle>
                     <DialogDescription>
-                      Selecciona el socio y las cuotas que deseas marcar como pagadas
+                      Selecciona el socio y las cuotas que deseas marcar como
+                      pagadas
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Socio *</Label>
-                        <Select value={selectedSocio} onValueChange={(v) => { setSelectedSocio(v); setSelectedCuotas([]); }}>
+                        <Select
+                          value={selectedSocio}
+                          onValueChange={(v) => {
+                            setSelectedSocio(v);
+                            setSelectedCuotas([]);
+                          }}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona un socio" />
                           </SelectTrigger>
                           <SelectContent>
                             {personas.map((socio) => (
-                              <SelectItem key={socio.id} value={String(socio.id)}>
-                                {socio.nombre} {socio.apellido} (DNI: {socio.dni})
+                              <SelectItem
+                                key={socio.id}
+                                value={String(socio.id)}
+                              >
+                                {socio.nombre} {socio.apellido} (DNI:{" "}
+                                {socio.dni})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -498,14 +670,21 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       </div>
                       <div className="space-y-2">
                         <Label>Método de Pago *</Label>
-                        <Select value={metodoPago} onValueChange={(v: any) => setMetodoPago(v as any)}>
+                        <Select
+                          value={metodoPago}
+                          onValueChange={(v: any) => setMetodoPago(v as any)}
+                        >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="EFECTIVO">Efectivo</SelectItem>
-                            <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
-                            <SelectItem value="DEBITO_AUTOMATICO">Débito Automático</SelectItem>
+                            <SelectItem value="TRANSFERENCIA">
+                              Transferencia
+                            </SelectItem>
+                            <SelectItem value="DEBITO_AUTOMATICO">
+                              Débito Automático
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -524,48 +703,89 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       <Label>Cuotas a pagar *</Label>
                       <div className="border rounded-lg divide-y max-h-[260px] overflow-y-auto">
                         {cuotas
-                          .filter(c => selectedSocio && Number(c.personaId) === Number(selectedSocio) && c.estado !== 'PAGADA')
-                          .map(cuota => {
-                            const deporte = deportes.find(d => Number(d.id) === Number(cuota.deporteId));
-                            const checked = selectedCuotas.includes(Number(cuota.id));
+                          .filter(
+                            (c) =>
+                              selectedSocio &&
+                              Number(c.personaId) === Number(selectedSocio) &&
+                              c.estado !== "PAGADA",
+                          )
+                          .map((cuota) => {
+                            const deporte = deportes.find(
+                              (d) => Number(d.id) === Number(cuota.deporteId),
+                            );
+                            const checked = selectedCuotas.includes(
+                              Number(cuota.id),
+                            );
                             return (
-                              <div key={cuota.id} className="flex items-center gap-3 p-3">
+                              <div
+                                key={cuota.id}
+                                className="flex items-center gap-3 p-3"
+                              >
                                 <Checkbox
                                   id={`cuota-${cuota.id}`}
                                   checked={checked}
                                   onCheckedChange={(val) => {
                                     if (val) {
-                                      setSelectedCuotas(prev => [...prev, Number(cuota.id)]);
+                                      setSelectedCuotas((prev) => [
+                                        ...prev,
+                                        Number(cuota.id),
+                                      ]);
                                     } else {
-                                      setSelectedCuotas(prev => prev.filter(id => id !== Number(cuota.id)));
+                                      setSelectedCuotas((prev) =>
+                                        prev.filter(
+                                          (id) => id !== Number(cuota.id),
+                                        ),
+                                      );
                                     }
                                   }}
                                 />
-                                <label htmlFor={`cuota-${cuota.id}`} className="flex-1 cursor-pointer">
+                                <label
+                                  htmlFor={`cuota-${cuota.id}`}
+                                  className="flex-1 cursor-pointer"
+                                >
                                   <div className="font-medium flex items-center gap-2">
-                                    {deporte?.nombre || 'Cuota'}
-                                    <Badge variant="outline" className="text-xs">{cuota.estado}</Badge>
+                                    {deporte?.nombre || "Cuota"}
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {cuota.estado}
+                                    </Badge>
                                   </div>
                                   <div className="text-sm text-gray-500">
                                     Periodo: {getMesAno(cuota.periodo)}
                                   </div>
                                 </label>
-                                <div className="text-sm font-semibold">${(cuota.monto || 0).toLocaleString()}</div>
+                                <div className="text-sm font-semibold">
+                                  ${(cuota.monto || 0).toLocaleString()}
+                                </div>
                               </div>
                             );
                           })}
-                        {selectedSocio && cuotas.filter(c => Number(c.personaId) === Number(selectedSocio) && c.estado !== 'PAGADA').length === 0 && (
-                          <div className="p-3 text-sm text-gray-500">No hay cuotas pendientes para este socio</div>
-                        )}
+                        {selectedSocio &&
+                          cuotas.filter(
+                            (c) =>
+                              Number(c.personaId) === Number(selectedSocio) &&
+                              c.estado !== "PAGADA",
+                          ).length === 0 && (
+                            <div className="p-3 text-sm text-gray-500">
+                              No hay cuotas pendientes para este socio
+                            </div>
+                          )}
                         {!selectedSocio && (
-                          <div className="p-3 text-sm text-gray-500">Selecciona un socio para ver sus cuotas</div>
+                          <div className="p-3 text-sm text-gray-500">
+                            Selecciona un socio para ver sus cuotas
+                          </div>
                         )}
                       </div>
                       <div className="flex justify-between text-sm text-gray-700">
                         <span>Total seleccionado:</span>
                         <span className="font-semibold">
-                          ${cuotas
-                            .filter(c => selectedCuotas.includes(Number(c.id)))
+                          $
+                          {cuotas
+                            .filter((c) =>
+                              selectedCuotas.includes(Number(c.id)),
+                            )
                             .reduce((sum, c) => sum + (c.monto || 0), 0)
                             .toLocaleString()}
                         </span>
@@ -573,7 +793,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsDialogOpen(false);
+                        resetForm();
+                      }}
+                    >
                       Cancelar
                     </Button>
                     <Button onClick={handleRegistrarPago}>
@@ -593,14 +819,19 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
               <TabsTrigger value="vencidos">Vencidas</TabsTrigger>
               <TabsTrigger value="pagos">Pagos</TabsTrigger>
-              <TabsTrigger value="ingresosPorSocio">Ingresos por socio</TabsTrigger>
-              <TabsTrigger value="ingresos-fecha" className="flex items-center gap-1.5">
+              <TabsTrigger value="ingresosPorSocio">
+                Ingresos por socio
+              </TabsTrigger>
+              <TabsTrigger
+                value="ingresos-fecha"
+                className="flex items-center gap-1.5"
+              >
                 <Calendar className="w-4 h-4" />
                 Ingresos por Fecha
               </TabsTrigger>
             </TabsList>
 
-            {['todos', 'pagados', 'pendientes', 'vencidos'].map((tab) => (
+            {["todos", "pagados", "pendientes", "vencidos"].map((tab) => (
               <TabsContent key={tab} value={tab}>
                 <div className="mb-4">
                   <Input
@@ -627,21 +858,24 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </TableHeader>
                     <TableBody>
                       {pagos
-                        .filter(p => {
-                          if (tab === 'todos') return true;
-                          if (tab === 'pagados') return p.estado === 'pagado';
-                          if (tab === 'pendientes') return p.estado === 'pendiente';
-                          if (tab === 'vencidos') return p.estado === 'vencido';
+                        .filter((p) => {
+                          if (tab === "todos") return true;
+                          if (tab === "pagados") return p.estado === "pagado";
+                          if (tab === "pendientes")
+                            return p.estado === "pendiente";
+                          if (tab === "vencidos") return p.estado === "vencido";
                           return true;
                         })
-                        .filter(p => {
+                        .filter((p) => {
                           const search = searchCuota.toLowerCase().trim();
                           if (!search) return true;
                           return (
                             p.socio.toLowerCase().includes(search) ||
                             p.socioDNI.toLowerCase().includes(search) ||
                             p.estado.toLowerCase().includes(search) ||
-                            p.conceptos.some(c => c.concepto.toLowerCase().includes(search))
+                            p.conceptos.some((c) =>
+                              c.concepto.toLowerCase().includes(search),
+                            )
                           );
                         })
                         .map((pago) => (
@@ -653,7 +887,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <div className="text-sm space-y-1">
                                 {pago.conceptos.map((c, idx) => (
                                   <div key={idx}>
-                                    <span className="text-gray-600">{c.concepto}</span>
+                                    <span className="text-gray-600">
+                                      {c.concepto}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
@@ -667,10 +903,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              {pago.fecha ? formatearFechaDisplay(pago.fecha) : '-'}
+                              {pago.fecha
+                                ? formatearFechaDisplay(pago.fecha)
+                                : "-"}
                             </TableCell>
                             <TableCell>
-                              <Badge variant={getEstadoBadge(pago.estado) as any}>
+                              <Badge
+                                variant={getEstadoBadge(pago.estado) as any}
+                              >
                                 {pago.estado}
                               </Badge>
                             </TableCell>
@@ -686,14 +926,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
             <TabsContent value="pagos">
               <div className="mb-4 flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex items-center gap-3">
-                  <Label htmlFor="filterDeportePago" className="whitespace-nowrap">Filtrar por deporte:</Label>
-                  <Select value={filterDeportePago} onValueChange={setFilterDeportePago}>
+                  <Label
+                    htmlFor="filterDeportePago"
+                    className="whitespace-nowrap"
+                  >
+                    Filtrar por deporte:
+                  </Label>
+                  <Select
+                    value={filterDeportePago}
+                    onValueChange={setFilterDeportePago}
+                  >
                     <SelectTrigger id="filterDeportePago" className="w-64">
                       <SelectValue placeholder="Todos los deportes" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los deportes</SelectItem>
-                      {deportes.map(deporte => (
+                      {deportes.map((deporte) => (
                         <SelectItem key={deporte.id} value={String(deporte.id)}>
                           {deporte.nombre}
                         </SelectItem>
@@ -703,8 +951,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Label htmlFor="filterMesPago" className="whitespace-nowrap">Filtrar por mes:</Label>
-                  <Select value={filterMesPago} onValueChange={setFilterMesPago}>
+                  <Label htmlFor="filterMesPago" className="whitespace-nowrap">
+                    Filtrar por mes:
+                  </Label>
+                  <Select
+                    value={filterMesPago}
+                    onValueChange={setFilterMesPago}
+                  >
                     <SelectTrigger id="filterMesPago" className="w-48">
                       <SelectValue placeholder="Todos los meses" />
                     </SelectTrigger>
@@ -727,10 +980,15 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Label htmlFor="filterSocioPago" className="whitespace-nowrap">Filtrar por socio:</Label>
+                  <Label
+                    htmlFor="filterSocioPago"
+                    className="whitespace-nowrap"
+                  >
+                    Filtrar por socio:
+                  </Label>
                   <Input
                     id="filterSocioPago"
-                    value={filterSocioPago === 'all' ? '' : filterSocioPago}
+                    value={filterSocioPago === "all" ? "" : filterSocioPago}
                     onChange={(e) => setFilterSocioPago(e.target.value)}
                     placeholder="Buscar por nombre, apellido o DNI..."
                     className="w-64"
@@ -752,126 +1010,217 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Array.isArray(pagosServidor) && pagosServidor.length > 0 ? (
+                    {Array.isArray(pagosServidor) &&
+                    pagosServidor.length > 0 ? (
                       pagosServidor
                         .filter((pago: any) => {
                           const matchesDeporte = (() => {
-                            if (filterDeportePago === 'all') return true;
-                            const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
-                            return cuotasDePago.some(c => Number(c.deporteId) === Number(filterDeportePago));
+                            if (filterDeportePago === "all") return true;
+                            const cuotasDePago = cuotas.filter(
+                              (c) => Number(c.pagoId) === Number(pago.id),
+                            );
+                            return cuotasDePago.some(
+                              (c) =>
+                                Number(c.deporteId) ===
+                                Number(filterDeportePago),
+                            );
                           })();
 
                           const matchesMes = (() => {
-                            if (filterMesPago === 'all') return true;
+                            if (filterMesPago === "all") return true;
                             if (!pago.fechaPago) return false;
-                            const mesPago = new Date(pago.fechaPago).getMonth() + 1;
+                            const mesPago =
+                              new Date(pago.fechaPago).getMonth() + 1;
                             return mesPago === Number(filterMesPago);
                           })();
 
                           const matchesSocio = (() => {
-                            if (filterSocioPago === 'all' || !filterSocioPago) return true;
-                            const q = String(filterSocioPago).toLowerCase().trim();
-                            const socio = personas.find(p => Number(p.id) === Number(pago.socioId));
+                            if (filterSocioPago === "all" || !filterSocioPago)
+                              return true;
+                            const q = String(filterSocioPago)
+                              .toLowerCase()
+                              .trim();
+                            const socio = personas.find(
+                              (p) => Number(p.id) === Number(pago.socioId),
+                            );
                             if (!socio) return false;
-                            const nombreCompleto = `${socio.nombre} ${socio.apellido}`.toLowerCase();
-                            const dni = String(socio.dni || '').toLowerCase();
-                            return nombreCompleto.includes(q) || dni.includes(q);
+                            const nombreCompleto =
+                              `${socio.nombre} ${socio.apellido}`.toLowerCase();
+                            const dni = String(socio.dni || "").toLowerCase();
+                            return (
+                              nombreCompleto.includes(q) || dni.includes(q)
+                            );
                           })();
 
                           return matchesDeporte && matchesMes && matchesSocio;
                         })
                         .map((pago: any) => {
-                          const socio = personas.find(p => Number(p.id) === Number(pago.socioId));
-                          const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
+                          const socio = personas.find(
+                            (p) => Number(p.id) === Number(pago.socioId),
+                          );
+                          const cuotasDePago = cuotas.filter(
+                            (c) => Number(c.pagoId) === Number(pago.id),
+                          );
                           const deportesNombres = cuotasDePago
-                            .map(c => {
-                              const deporte = deportes.find(d => Number(d.id) === Number(c.deporteId));
-                              return deporte?.nombre || 'Deporte desconocido';
+                            .map((c) => {
+                              const deporte = deportes.find(
+                                (d) => Number(d.id) === Number(c.deporteId),
+                              );
+                              return deporte?.nombre || "Deporte desconocido";
                             })
-                            .join(', ');
+                            .join(", ");
                           const isExpanded = expandedPagos.has(String(pago.id));
-                          const desglosePorDeporte = cuotasDePago.reduce((acc, cuota) => {
-                            const deporteId = Number(cuota.deporteId);
-                            if (!acc[deporteId]) {
-                              const deporte = deportes.find(d => Number(d.id) === deporteId);
-                              acc[deporteId] = {
-                                nombre: deporte?.nombre || 'Deporte desconocido',
-                                entrenador: 0,
-                                seguro: 0,
-                                social: 0,
-                              };
-                            }
-                            acc[deporteId].entrenador += cuota.cuotaEntrenador || 0;
-                            acc[deporteId].seguro += cuota.cuotaSeguro || 0;
-                            acc[deporteId].social += cuota.cuotaSocial || 0;
-                            return acc;
-                          }, {} as Record<number, { nombre: string; entrenador: number; seguro: number; social: number }>);
-                          const desgloseArray = Object.values(desglosePorDeporte);
-                          const hasConceptos = desgloseArray.some(d => d.entrenador || d.seguro || d.social);
+                          const desglosePorDeporte = cuotasDePago.reduce(
+                            (acc, cuota) => {
+                              const deporteId = Number(cuota.deporteId);
+                              if (!acc[deporteId]) {
+                                const deporte = deportes.find(
+                                  (d) => Number(d.id) === deporteId,
+                                );
+                                acc[deporteId] = {
+                                  nombre:
+                                    deporte?.nombre || "Deporte desconocido",
+                                  entrenador: 0,
+                                  seguro: 0,
+                                  social: 0,
+                                };
+                              }
+                              acc[deporteId].entrenador +=
+                                cuota.cuotaEntrenador || 0;
+                              acc[deporteId].seguro += cuota.cuotaSeguro || 0;
+                              acc[deporteId].social += cuota.cuotaSocial || 0;
+                              return acc;
+                            },
+                            {} as Record<
+                              number,
+                              {
+                                nombre: string;
+                                entrenador: number;
+                                seguro: number;
+                                social: number;
+                              }
+                            >,
+                          );
+                          const desgloseArray =
+                            Object.values(desglosePorDeporte);
+                          const hasConceptos = desgloseArray.some(
+                            (d) => d.entrenador || d.seguro || d.social,
+                          );
 
                           return (
-                               
-                          <>
-                            <TableRow key={pago.id} className="cursor-pointer hover:bg-gray-50" onClick={() => togglePagoExpanded(String(pago.id))}>
-                              <TableCell>
-                                {hasConceptos ? (
-                                  isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-                                ) : null}
-                              </TableCell>
-                              <TableCell>{socio ? `${socio.nombre} ${socio.apellido}` : '—'}</TableCell>
-                              <TableCell>{socio?.dni || '—'}</TableCell>
-                              <TableCell>{deportesNombres || '—'}</TableCell>
-                              <TableCell>${(pago.montoTotal || 0).toLocaleString()}</TableCell>
-                              <TableCell>{formatearFechaDisplay(pago.fechaPago)}</TableCell>
-                              <TableCell>{pago.observaciones || '—'}</TableCell>
-                            </TableRow>
-                            {isExpanded && hasConceptos && (
-                              <TableRow key={`${pago.id}-desglose`} className="bg-gray-50">
-                                <TableCell colSpan={7} className="py-3 px-6">
-                                  <div className="space-y-2">
-                                    <p className="text-sm font-semibold text-gray-700">Desglose de conceptos:</p>
-                                    <div className="space-y-3">
-                                      {desgloseArray.map((d, idx) => (
-                                        <div key={`${pago.id}-dep-${idx}`} className="rounded border bg-white p-3">
-                                          <div className="font-medium text-gray-700 mb-2">{d.nombre}</div>
-                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                            {d.entrenador > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Entrenador:</span>
-                                                <span className="font-semibold">${d.entrenador.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                            {d.seguro > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Seguro:</span>
-                                                <span className="font-semibold">${d.seguro.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                            {d.social > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Social:</span>
-                                                <span className="font-semibold">${d.social.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {pago.montoTotal !== (pago.cuotaEntrenador + pago.cuotaSeguro + pago.cuotaSocial) && (
-                                      <p className="text-xs text-gray-500 mt-2">
-                                        * El monto total puede diferir de la suma por promociones aplicadas
-                                      </p>
-                                    )}
-                                  </div>
+                            <>
+                              <TableRow
+                                key={pago.id}
+                                className="cursor-pointer hover:bg-gray-50"
+                                onClick={() =>
+                                  togglePagoExpanded(String(pago.id))
+                                }
+                              >
+                                <TableCell>
+                                  {hasConceptos ? (
+                                    isExpanded ? (
+                                      <ChevronDown className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4" />
+                                    )
+                                  ) : null}
+                                </TableCell>
+                                <TableCell>
+                                  {socio
+                                    ? `${socio.nombre} ${socio.apellido}`
+                                    : "—"}
+                                </TableCell>
+                                <TableCell>{socio?.dni || "—"}</TableCell>
+                                <TableCell>{deportesNombres || "—"}</TableCell>
+                                <TableCell>
+                                  ${(pago.montoTotal || 0).toLocaleString()}
+                                </TableCell>
+                                <TableCell>
+                                  {formatearFechaDisplay(pago.fechaPago)}
+                                </TableCell>
+                                <TableCell>
+                                  {pago.observaciones || "—"}
                                 </TableCell>
                               </TableRow>
-                            )}
+                              {isExpanded && hasConceptos && (
+                                <TableRow
+                                  key={`${pago.id}-desglose`}
+                                  className="bg-gray-50"
+                                >
+                                  <TableCell colSpan={7} className="py-3 px-6">
+                                    <div className="space-y-2">
+                                      <p className="text-sm font-semibold text-gray-700">
+                                        Desglose de conceptos:
+                                      </p>
+                                      <div className="space-y-3">
+                                        {desgloseArray.map((d, idx) => (
+                                          <div
+                                            key={`${pago.id}-dep-${idx}`}
+                                            className="rounded border bg-white p-3"
+                                          >
+                                            <div className="font-medium text-gray-700 mb-2">
+                                              {d.nombre}
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                              {d.entrenador > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-gray-600">
+                                                    Entrenador:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    $
+                                                    {d.entrenador.toLocaleString()}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {d.seguro > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-gray-600">
+                                                    Seguro:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    ${d.seguro.toLocaleString()}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {d.social > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-gray-600">
+                                                    Social:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    ${d.social.toLocaleString()}
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {pago.montoTotal !==
+                                        pago.cuotaEntrenador +
+                                          pago.cuotaSeguro +
+                                          pago.cuotaSocial && (
+                                        <p className="text-xs text-gray-500 mt-2">
+                                          * El monto total puede diferir de la
+                                          suma por promociones aplicadas
+                                        </p>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
                             </>
                           );
                         })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-gray-500">No hay pagos registrados</TableCell>
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-gray-500"
+                        >
+                          No hay pagos registrados
+                        </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -885,7 +1234,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle>Ingresos por socio</CardTitle>
-                      <CardDescription>Resumen de pagos agrupados por socio</CardDescription>
+                      <CardDescription>
+                        Resumen de pagos agrupados por socio
+                      </CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -895,7 +1246,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       type="text"
                       placeholder="Buscar por nombre, apellido o DNI..."
                       value={searchIngresosPorSocio}
-                      onChange={(e) => setSearchIngresosPorSocio(e.target.value)}
+                      onChange={(e) =>
+                        setSearchIngresosPorSocio(e.target.value)
+                      }
                       className="max-w-md"
                     />
                   </div>
@@ -920,19 +1273,25 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               </TableCell>
                               <TableCell>{item.dni}</TableCell>
                               <TableCell>
-                                ${Number(item.totalPagado || 0).toLocaleString()}
+                                $
+                                {Number(item.totalPagado || 0).toLocaleString()}
                               </TableCell>
                               <TableCell>{item.cantidadPagos}</TableCell>
                               <TableCell>
                                 {item.ultimoPago
-                                  ? new Date(item.ultimoPago).toLocaleDateString('es-ES')
-                                  : '-'}
+                                  ? new Date(
+                                      item.ultimoPago,
+                                    ).toLocaleDateString("es-ES")
+                                  : "-"}
                               </TableCell>
                             </TableRow>
                           ))
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-gray-500">
+                            <TableCell
+                              colSpan={5}
+                              className="text-center text-gray-500"
+                            >
                               No se encontraron resultados
                             </TableCell>
                           </TableRow>
@@ -942,29 +1301,38 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </div>
                 </CardContent>
               </Card>
-              </TabsContent>
+            </TabsContent>
             {/* Listado y Reporte por Fecha o Rango */}
             <TabsContent value="ingresos-fecha" className="space-y-4">
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-semibold text-base">Consulta de Ingresos por Fecha o Período</h3>
-                    <p className="text-sm text-gray-500">Consulta cuántos ingresos hubo y el total recaudado en una fecha fija o rango.</p>
+                    <h3 className="font-semibold text-base">
+                      Consulta de Ingresos por Fecha o Período
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Consulta cuántos ingresos hubo y el total recaudado en una
+                      fecha fija o rango.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
-                      variant={modoFiltroFecha === 'dia' ? 'default' : 'outline'}
-                      onClick={() => setModoFiltroFecha('dia')}
+                      variant={
+                        modoFiltroFecha === "dia" ? "default" : "outline"
+                      }
+                      onClick={() => setModoFiltroFecha("dia")}
                     >
                       Día puntual
                     </Button>
                     <Button
                       type="button"
                       size="sm"
-                      variant={modoFiltroFecha === 'rango' ? 'default' : 'outline'}
-                      onClick={() => setModoFiltroFecha('rango')}
+                      variant={
+                        modoFiltroFecha === "rango" ? "default" : "outline"
+                      }
+                      onClick={() => setModoFiltroFecha("rango")}
                     >
                       Período / Rango
                     </Button>
@@ -972,9 +1340,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </div>
 
                 <div className="flex flex-wrap items-end gap-3 pt-2">
-                  {modoFiltroFecha === 'dia' ? (
+                  {modoFiltroFecha === "dia" ? (
                     <div className="space-y-1">
-                      <Label htmlFor="filtro-fecha-dia">Fecha del ingreso</Label>
+                      <Label htmlFor="filtro-fecha-dia">
+                        Fecha del ingreso
+                      </Label>
                       <Input
                         id="filtro-fecha-dia"
                         type="date"
@@ -1008,18 +1378,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </>
                   )}
 
-                  <Button onClick={consultarIngresosPorFecha} disabled={cargandoReporte} className="gap-2">
+                  <Button
+                    onClick={consultarIngresosPorFecha}
+                    disabled={cargandoReporte}
+                    className="gap-2"
+                  >
                     <Search className="w-4 h-4" />
-                    {cargandoReporte ? 'Consultando...' : 'Buscar Ingresos'}
+                    {cargandoReporte ? "Consultando..." : "Buscar Ingresos"}
                   </Button>
 
                   <Button
                     variant="ghost"
                     onClick={() => {
-                      setModoFiltroFecha('dia');
+                      setModoFiltroFecha("dia");
                       setFechaFiltro(getFechaHoy());
-                      setFechaDesdeFiltro('');
-                      setFechaHastaFiltro('');
+                      setFechaDesdeFiltro("");
+                      setFechaHastaFiltro("");
                       setResumenIngresos(null);
                       setPagosFiltrados([]);
                     }}
@@ -1035,7 +1409,10 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     <CardHeader className="pb-2">
                       <CardDescription>Cantidad de Ingresos</CardDescription>
                       <CardTitle className="text-2xl font-bold text-blue-700">
-                        {resumenIngresos.cantidadIngresos} {resumenIngresos.cantidadIngresos === 1 ? 'cobro' : 'cobros'}
+                        {resumenIngresos.cantidadIngresos}{" "}
+                        {resumenIngresos.cantidadIngresos === 1
+                          ? "cobro"
+                          : "cobros"}
                       </CardTitle>
                     </CardHeader>
                   </Card>
@@ -1059,7 +1436,10 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     <CardHeader className="pb-2">
                       <CardDescription>Cuota Entrenador</CardDescription>
                       <CardTitle className="text-xl font-semibold">
-                        ${(resumenIngresos.totalEntrenador || 0).toLocaleString()}
+                        $
+                        {(
+                          resumenIngresos.totalEntrenador || 0
+                        ).toLocaleString()}
                       </CardTitle>
                     </CardHeader>
                   </Card>
@@ -1090,36 +1470,56 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   <TableBody>
                     {pagosFiltrados.length > 0 ? (
                       pagosFiltrados.map((pago: any) => {
-                        const socio = personas.find(p => Number(p.id) === Number(pago.socioId));
-                        const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(pago.id));
-                        const deportesNombres = cuotasDePago
-                          .map(c => {
-                            const deporte = deportes.find(d => Number(d.id) === Number(c.deporteId));
-                            return deporte?.nombre || 'Deporte';
-                          })
-                          .filter(Boolean)
-                          .join(', ') || '—';
+                        const socio = personas.find(
+                          (p) => Number(p.id) === Number(pago.socioId),
+                        );
+                        const cuotasDePago = cuotas.filter(
+                          (c) => Number(c.pagoId) === Number(pago.id),
+                        );
+                        const deportesNombres =
+                          cuotasDePago
+                            .map((c) => {
+                              const deporte = deportes.find(
+                                (d) => Number(d.id) === Number(c.deporteId),
+                              );
+                              return deporte?.nombre || "Deporte";
+                            })
+                            .filter(Boolean)
+                            .join(", ") || "—";
 
                         return (
                           <TableRow key={`filtro-${pago.id}`}>
-                            <TableCell className="font-medium">{socio ? `${socio.nombre} ${socio.apellido}` : '—'}</TableCell>
-                            <TableCell>{socio?.dni || '—'}</TableCell>
+                            <TableCell className="font-medium">
+                              {socio
+                                ? `${socio.nombre} ${socio.apellido}`
+                                : "—"}
+                            </TableCell>
+                            <TableCell>{socio?.dni || "—"}</TableCell>
                             <TableCell>{deportesNombres}</TableCell>
-                            <TableCell className="font-semibold text-green-700">${(pago.montoTotal || 0).toLocaleString()}</TableCell>
+                            <TableCell className="font-semibold text-green-700">
+                              ${(pago.montoTotal || 0).toLocaleString()}
+                            </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{getMetodoPagoLabel(pago.metodoPago)}</Badge>
+                              <Badge variant="outline">
+                                {getMetodoPagoLabel(pago.metodoPago)}
+                              </Badge>
                             </TableCell>
                             <TableCell>
                               {formatearFechaDisplay(pago.fechaPago)}
                             </TableCell>
-                            <TableCell>{pago.observaciones || '—'}</TableCell>
+                            <TableCell>{pago.observaciones || "—"}</TableCell>
                           </TableRow>
                         );
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-6 text-gray-500">
-                          {cargandoReporte ? 'Buscando ingresos...' : 'No se encontraron ingresos registrados para el criterio seleccionado.'}
+                        <TableCell
+                          colSpan={7}
+                          className="text-center py-6 text-gray-500"
+                        >
+                          {cargandoReporte
+                            ? "Buscando ingresos..."
+                            : "No se encontraron ingresos registrados para el criterio seleccionado."}
                         </TableCell>
                       </TableRow>
                     )}

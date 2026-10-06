@@ -1,30 +1,68 @@
-import { Fragment, useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Badge } from './ui/badge';
-import { Edit, Trash2, Search, UserPlus, History, ArrowUpDown, SquareArrowDown, SquareArrowRight} from 'lucide-react';
-import { toast } from 'sonner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import personaService from '../services/personaService';
-import deporteService from '../services/deporteService';
-import registroService from '../services/registroService';
-import promocionService from '../services/promocionService';
-import type { Persona } from '../types/persona';
-import type { Deporte } from '../types/deporte';
-import type { Registro } from '../types/registro';
-import type { Promocion } from '../types/promocion';
-import { Checkbox } from './ui/checkbox';
+import { Fragment, useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { Badge } from "./ui/badge";
+import {
+  Edit,
+  Trash2,
+  Search,
+  UserPlus,
+  History,
+  ArrowUpDown,
+  SquareArrowDown,
+  SquareArrowRight,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import personaService from "../services/personaService";
+import deporteService from "../services/deporteService";
+import registroService from "../services/registroService";
+import promocionService from "../services/promocionService";
+import type { Persona } from "../types/persona";
+import type { Deporte } from "../types/deporte";
+import type { Registro } from "../types/registro";
+import type { Promocion } from "../types/promocion";
+import { Checkbox } from "./ui/checkbox";
+import grupoFamiliarService from "../services/grupoFamiliarService";
+import type { GrupoFamiliar } from "../types/grupoFamiliar";
 
 // Usamos directamente el tipo Persona del backend
 type Socio = Persona & {
   responsablePago?: string;
   responsableDni?: string;
-  estado: 'activo' | 'inactivo';
+  estado: "activo" | "inactivo";
+  grupoFamiliarId?: number | null;
 };
 
 interface FormSocio {
@@ -38,12 +76,12 @@ interface FormSocio {
   responsableNombre?: string;
   responsableApellido?: string;
   responsableDni?: string;
-  categoria: 'SOCIO' | 'JUGADOR' | 'SOCIOYJUGADOR';
-  estado: 'activo' | 'inactivo';
+  categoria: "SOCIO" | "JUGADOR" | "SOCIOYJUGADOR";
+  estado: "activo" | "inactivo";
 }
 
 interface SociosModuleProps {
-  userRole: 'admin' | 'secretario';
+  userRole: "admin" | "secretario";
 }
 
 // Calcula la edad a partir de la fecha de nacimiento
@@ -56,7 +94,7 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
   if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
     edad--;
   }
-  
+
   return edad;
 };
 
@@ -67,33 +105,53 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historialRegistros, setHistorialRegistros] = useState<Registro[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategoria, setFilterCategoria] = useState<string>('all');
-  const [filterDeporte, setFilterDeporte] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategoria, setFilterCategoria] = useState<string>("all");
+  const [filterDeporte, setFilterDeporte] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSocio, setEditingSocio] = useState<Socio | null>(null);
-  const [selectedPromocionId, setSelectedPromocionId] = useState<Number | null>(null);
+  const [selectedPromocionId, setSelectedPromocionId] = useState<Number | null>(
+    null,
+  );
   const [formData, setFormData] = useState<FormSocio>({
-    categoria: 'SOCIO',
-    estado: 'activo',
-    responsableNombre: '',
-    responsableApellido: '',
-    responsableDni: '',
+    categoria: "SOCIO",
+    estado: "activo",
+    responsableNombre: "",
+    responsableApellido: "",
+    responsableDni: "",
   });
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [socioToDelete, setSocioToDelete] = useState<Socio | null>(null);
-  const [observacionBaja, setObservacionBaja] = useState('');
-  const [expandedRegistroId, setExpandedRegistroId] = useState<string | null>(null);
-  const [registroDuplicado, setRegistroDuplicado] = useState<Registro | null>(null);
+  const [observacionBaja, setObservacionBaja] = useState("");
+  const [expandedRegistroId, setExpandedRegistroId] = useState<string | null>(
+    null,
+  );
+  const [registroDuplicado, setRegistroDuplicado] = useState<Registro | null>(
+    null,
+  );
   const [pendingSocioData, setPendingSocioData] = useState<any | null>(null);
   const [isRegistroDialogOpen, setIsRegistroDialogOpen] = useState(false);
   const [socioToAltaBaja, setSocioToAltaBaja] = useState<Socio | null>(null);
   const [isAltaBajaDialogOpen, setIsAltaBajaDialogOpen] = useState(false);
-  const [historialSearchTerm, setHistorialSearchTerm] = useState('');
-  const [historialFilter, setHistorialFilter] = useState<'todos' | 'activos' | 'inactivos'>('todos');
-  const [activeFilter, setActiveFilter] = useState<'activos' | 'inactivos'>('activos');
-  const [activeTab, setActiveTab] = useState('socios');
-  const [formErrors, setFormErrors] = useState<{ nombre: boolean; apellido: boolean; dni: boolean; fechaNacimiento: boolean; responsableNombre: boolean; responsableApellido: boolean; responsableDni: boolean; telefono: boolean; email:boolean }>({
+  const [historialSearchTerm, setHistorialSearchTerm] = useState("");
+  const [historialFilter, setHistorialFilter] = useState<
+    "todos" | "activos" | "inactivos"
+  >("todos");
+  const [activeFilter, setActiveFilter] = useState<"activos" | "inactivos">(
+    "activos",
+  );
+  const [activeTab, setActiveTab] = useState("socios");
+  const [formErrors, setFormErrors] = useState<{
+    nombre: boolean;
+    apellido: boolean;
+    dni: boolean;
+    fechaNacimiento: boolean;
+    responsableNombre: boolean;
+    responsableApellido: boolean;
+    responsableDni: boolean;
+    telefono: boolean;
+    email: boolean;
+  }>({
     nombre: false,
     apellido: false,
     dni: false,
@@ -104,16 +162,29 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     telefono: false,
     email: false,
   });
-  const [fechaNacimientoParts, setFechaNacimientoParts] = useState<{ day: string; month: string; year: string }>({
-    day: '',
-    month: '',
-    year: '',
+  const [fechaNacimientoParts, setFechaNacimientoParts] = useState<{
+    day: string;
+    month: string;
+    year: string;
+  }>({
+    day: "",
+    month: "",
+    year: "",
   });
-
-  const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+  // Estado para grupos familiares
+  const [gruposFamiliares, setGruposFamiliares] = useState<GrupoFamiliar[]>([]);
+  const [isGrupoDialogOpen, setIsGrupoDialogOpen] = useState(false);
+  const [editingGrupo, setEditingGrupo] = useState<GrupoFamiliar | null>(null);
+  const [selectedResponsable, setSelectedResponsable] = useState<string>("");
+  const [selectedIntegrantes, setSelectedIntegrantes] = useState<string[]>([]);
+  const [expandedGrupoId, setExpandedGrupoId] = useState<string | null>(null);
+  // Array de días, meses y años para el selector de fecha de nacimiento
+  const days = Array.from({ length: 31 }, (_, i) =>
+    String(i + 1).padStart(2, "0"),
+  );
   const months = Array.from({ length: 12 }, (_, i) => ({
-    value: String(i + 1).padStart(2, '0'),
-    label: new Date(2000, i, 1).toLocaleString('es-ES', { month: 'long' }),
+    value: String(i + 1).padStart(2, "0"),
+    label: new Date(2000, i, 1).toLocaleString("es-ES", { month: "long" }),
   }));
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 90 }, (_, i) => String(currentYear - i));
@@ -125,10 +196,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     setFechaNacimientoParts({ day, month, year });
     if (day && month && year) {
       const composed = `${year}-${month}-${day}`;
-      setFormData(prev => ({ ...prev, fechaNacimiento: composed }));
-      setFormErrors(prev => ({ ...prev, fechaNacimiento: false }));
+      setFormData((prev) => ({ ...prev, fechaNacimiento: composed }));
+      setFormErrors((prev) => ({ ...prev, fechaNacimiento: false }));
     } else {
-      setFormData(prev => ({ ...prev, fechaNacimiento: null }));
+      setFormData((prev) => ({ ...prev, fechaNacimiento: null }));
     }
   };
 
@@ -136,18 +207,33 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const cargarRegistros = async () => {
     try {
       const registrosResponse = await registroService.getAll();
-      setHistorialRegistros(Array.isArray(registrosResponse.data) ? registrosResponse.data : []);
+      setHistorialRegistros(
+        Array.isArray(registrosResponse.data) ? registrosResponse.data : [],
+      );
     } catch (err) {
-      console.error('Error al cargar registros:', err);
-      toast.error('No se pudieron cargar los registros históricos');
+      console.error("Error al cargar registros:", err);
+      toast.error("No se pudieron cargar los registros históricos");
+    }
+  };
+
+  // Función para cargar grupos familiares
+  const cargarGruposFamiliares = async () => {
+    try {
+      const response = await grupoFamiliarService.getAll();
+      setGruposFamiliares(response.data);
+    } catch (err) {
+      console.error("Error al cargar grupos:", err);
+      toast.error("No se pudieron cargar los grupos familiares");
     }
   };
 
   // Manejar cambio de tab
   const handleTabChange = (value: string) => {
     setActiveTab(value);
-    if (value === 'historial') {
+    if (value === "historial") {
       cargarRegistros();
+    } else if (value === "grupos") {
+      cargarGruposFamiliares();
     }
   };
 
@@ -155,30 +241,38 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const getDeportesNombres = (deportesIds?: number[]): string[] => {
     if (!deportesIds || deportesIds.length === 0) return [];
     return deportesIds
-      .map(id => deportes.find(d => d.id === id)?.nombre)
+      .map((id) => deportes.find((d) => d.id === id)?.nombre)
       .filter((nombre): nombre is string => nombre !== undefined);
   };
-  
+
   // Función para formatear fecha
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   };
 
   const mapPersonasToSocios = (personas: Persona[]): Socio[] => {
-    const personasMap = new Map(personas.map((p: Persona) => [Number(p.id), p]));
+    const personasMap = new Map(
+      personas.map((p: Persona) => [Number(p.id), p]),
+    );
     return personas.map((persona: Persona) => {
-      const responsable = persona.socioResponsable || (persona.socioResponsableId ? personasMap.get(Number(persona.socioResponsableId)) : undefined);
+      const responsable =
+        persona.socioResponsable ||
+        (persona.socioResponsableId
+          ? personasMap.get(Number(persona.socioResponsableId))
+          : undefined);
       return {
         ...persona,
         responsablePago: persona.socioResponsable
           ? `${persona.socioResponsable.nombre} ${persona.socioResponsable.apellido} (DNI: ${persona.socioResponsable.dni})`
-          : responsable ? `${responsable.nombre} ${responsable.apellido} (DNI: ${responsable.dni})` : undefined,
+          : responsable
+            ? `${responsable.nombre} ${responsable.apellido} (DNI: ${responsable.dni})`
+            : undefined,
         responsableDni: responsable?.dni,
-        estado: persona.activo ? 'activo' : 'inactivo',
+        estado: persona.activo ? "activo" : "inactivo",
         //=========================================================================
         // Asegurarse de que deportes sea un array SACAR CUANDO EL BACKEND LO TENGA
         deportes: Array.isArray(persona.deportes) ? persona.deportes : [], // <-- default
@@ -193,15 +287,21 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     const cargarDatos = async () => {
       try {
         setLoading(true);
-        
+
         // Cargar deportes
         const deportesResponse = await deporteService.getAll();
-        setDeportes(Array.isArray(deportesResponse.data) ? deportesResponse.data : []);
-        
+        setDeportes(
+          Array.isArray(deportesResponse.data) ? deportesResponse.data : [],
+        );
+
         // Cargar promociones
         const promocionesResponse = await promocionService.getAll();
-        setPromociones(Array.isArray(promocionesResponse.data) ? promocionesResponse.data : []);
-        
+        setPromociones(
+          Array.isArray(promocionesResponse.data)
+            ? promocionesResponse.data
+            : [],
+        );
+
         // Cargar personas/socios
         const response = await personaService.getAll();
         const personas = response.data;
@@ -209,58 +309,70 @@ export function SociosModule({ userRole }: SociosModuleProps) {
         // Transformación mínima para ajustar al frontend
         const sociosFormateados = mapPersonasToSocios(personas);
         setSocios(sociosFormateados);
-        
+
         // Cargar registros históricos
         const registrosResponse = await registroService.getAll();
-        setHistorialRegistros(Array.isArray(registrosResponse.data) ? registrosResponse.data : []);
-        
+        setHistorialRegistros(
+          Array.isArray(registrosResponse.data) ? registrosResponse.data : [],
+        );
+
+        // Cargar grupos familiares
+        const gruposResponse = await grupoFamiliarService.getAll();
+        setGruposFamiliares(
+          Array.isArray(gruposResponse.data) ? gruposResponse.data : [],
+        );
+
         setError(null);
       } catch (err) {
-        console.error('Error al cargar socios:', err);
-        setError('No se pudieron cargar los socios');
+        console.error("Error al cargar socios:", err);
+        setError("No se pudieron cargar los socios");
       } finally {
         setLoading(false);
       }
     };
-    
+
     cargarDatos();
   }, []);
 
   // Filtros
-  const filteredSocios = socios.filter(socio => {
-    const matchesActive = 
-    (activeFilter === 'activos' && socio.activo) || 
-    (activeFilter === 'inactivos' && !socio.activo);
+  const filteredSocios = socios.filter((socio) => {
+    const matchesActive =
+      (activeFilter === "activos" && socio.activo) ||
+      (activeFilter === "inactivos" && !socio.activo);
 
-    const matchesSearch = 
+    const matchesSearch =
       socio.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       socio.apellido.toLowerCase().includes(searchTerm.toLowerCase()) ||
       socio.dni.includes(searchTerm);
-    
-    const matchesCategoria = filterCategoria === 'all' || 
-      (filterCategoria === 'socio' && socio.categoria === 'SOCIO') ||
-      (filterCategoria === 'jugador' && socio.categoria === 'JUGADOR') ||
-      (filterCategoria === 'socio y jugador' && socio.categoria === 'SOCIOYJUGADOR');
-    
+
+    const matchesCategoria =
+      filterCategoria === "all" ||
+      (filterCategoria === "socio" && socio.categoria === "SOCIO") ||
+      (filterCategoria === "jugador" && socio.categoria === "JUGADOR") ||
+      (filterCategoria === "socio y jugador" &&
+        socio.categoria === "SOCIOYJUGADOR");
+
     const deportesNombres = getDeportesNombres(socio.deportesIds);
-    const matchesDeporte = filterDeporte === 'all' || deportesNombres.includes(filterDeporte);
-    
+    const matchesDeporte =
+      filterDeporte === "all" || deportesNombres.includes(filterDeporte);
+
     return matchesActive && matchesSearch && matchesCategoria && matchesDeporte;
   });
 
   const filteredHistorial = historialRegistros
-    .filter(registro => {
-      const nombreCompleto = `${registro.apellido} ${registro.nombre}`.toLowerCase();
+    .filter((registro) => {
+      const nombreCompleto =
+        `${registro.apellido} ${registro.nombre}`.toLowerCase();
       return (
         nombreCompleto.includes(historialSearchTerm.toLowerCase()) ||
         registro.dni.includes(historialSearchTerm)
       );
     })
-    .filter(registro => {
-      if (historialFilter === 'activos') {
+    .filter((registro) => {
+      if (historialFilter === "activos") {
         return !registro.fechaBaja; // activos: sin fecha de baja
       }
-      if (historialFilter === 'inactivos') {
+      if (historialFilter === "inactivos") {
         return !!registro.fechaBaja; // dados de baja: con fecha de baja
       }
       return true; // 'todos'
@@ -271,7 +383,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     if (socio) {
       setEditingSocio(socio);
       setSelectedPromocionId(socio.promocionId || null);
-      const responsable = socio.socioResponsable || (socio.socioResponsableId ? socios.find(s => Number(s.id) === Number(socio.socioResponsableId)) : undefined);
+      const responsable =
+        socio.socioResponsable ||
+        (socio.socioResponsableId
+          ? socios.find(
+              (s) => Number(s.id) === Number(socio.socioResponsableId),
+            )
+          : undefined);
       setFormData({
         nombre: socio.nombre,
         apellido: socio.apellido,
@@ -280,32 +398,44 @@ export function SociosModule({ userRole }: SociosModuleProps) {
         direccion: socio.direccion,
         telefono: socio.telefono,
         correo: socio.email,
-        responsableNombre: responsable?.nombre || '',
-        responsableApellido: responsable?.apellido || '',
-        responsableDni: responsable?.dni || '',
+        responsableNombre: responsable?.nombre || "",
+        responsableApellido: responsable?.apellido || "",
+        responsableDni: responsable?.dni || "",
         categoria: socio.categoria,
         estado: socio.estado,
       });
 
-      const fecha = socio.fechaNacimiento ? new Date(socio.fechaNacimiento) : null;
+      const fecha = socio.fechaNacimiento
+        ? new Date(socio.fechaNacimiento)
+        : null;
       setFechaNacimientoParts({
-        day: fecha ? String(fecha.getDate()).padStart(2, '0') : '',
-        month: fecha ? String(fecha.getMonth() + 1).padStart(2, '0') : '',
-        year: fecha ? String(fecha.getFullYear()) : '',
+        day: fecha ? String(fecha.getDate()).padStart(2, "0") : "",
+        month: fecha ? String(fecha.getMonth() + 1).padStart(2, "0") : "",
+        year: fecha ? String(fecha.getFullYear()) : "",
       });
     } else {
       setEditingSocio(null);
       setSelectedPromocionId(null);
       setFormData({
-        categoria: 'SOCIO',
-        estado: 'activo',
-        responsableNombre: '',
-        responsableApellido: '',
-        responsableDni: '',
+        categoria: "SOCIO",
+        estado: "activo",
+        responsableNombre: "",
+        responsableApellido: "",
+        responsableDni: "",
       });
-      setFechaNacimientoParts({ day: '', month: '', year: '' });
+      setFechaNacimientoParts({ day: "", month: "", year: "" });
     }
-    setFormErrors({ nombre: false, apellido: false, dni: false, fechaNacimiento: false, responsableNombre: false, responsableApellido: false, responsableDni: false, telefono: false, email: false });
+    setFormErrors({
+      nombre: false,
+      apellido: false,
+      dni: false,
+      fechaNacimiento: false,
+      responsableNombre: false,
+      responsableApellido: false,
+      responsableDni: false,
+      telefono: false,
+      email: false,
+    });
     setIsDialogOpen(true);
   };
 
@@ -316,42 +446,65 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       apellido: !(formData.apellido && formData.apellido.trim().length > 0),
       dni: !(formData.dni && formData.dni.trim().length > 0),
       fechaNacimiento: false,
-      responsableNombre: formData.categoria === 'JUGADOR' ? !(formData.responsableNombre && formData.responsableNombre.trim().length > 0) : false,
-      responsableApellido: formData.categoria === 'JUGADOR' ? !(formData.responsableApellido && formData.responsableApellido.trim().length > 0) : false,
-      responsableDni: formData.categoria === 'JUGADOR' ? !(formData.responsableDni && formData.responsableDni.trim().length > 0) : false,
+      responsableNombre:
+        formData.categoria === "JUGADOR"
+          ? !(
+              formData.responsableNombre &&
+              formData.responsableNombre.trim().length > 0
+            )
+          : false,
+      responsableApellido:
+        formData.categoria === "JUGADOR"
+          ? !(
+              formData.responsableApellido &&
+              formData.responsableApellido.trim().length > 0
+            )
+          : false,
+      responsableDni:
+        formData.categoria === "JUGADOR"
+          ? !(
+              formData.responsableDni &&
+              formData.responsableDni.trim().length > 0
+            )
+          : false,
     };
 
     setFormErrors(errors);
     if (Object.values(errors).some(Boolean)) {
-      toast.error('Completa los campos obligatorios');
+      toast.error("Completa los campos obligatorios");
       return;
     }
 
     const socioData = {
-      nombre: formData.nombre || '',
-      apellido: formData.apellido || '',
-      dni: formData.dni || '',
+      nombre: formData.nombre || "",
+      apellido: formData.apellido || "",
+      dni: formData.dni || "",
       fechaNacimiento: formData.fechaNacimiento || null,
       email: formData.correo || null,
       telefono: formData.telefono || null,
       direccion: formData.direccion || null,
       categoria: formData.categoria,
       promocionId: selectedPromocionId || null,
-      ...(formData.categoria === 'JUGADOR' && formData.responsableDni ? { socioResponsableDni: formData.responsableDni } : {}),
+      ...(formData.categoria === "JUGADOR" && formData.responsableDni
+        ? { socioResponsableDni: formData.responsableDni }
+        : {}),
     };
-    
+
     try {
       if (editingSocio) {
-        toast.promise(personaService.update(parseInt(editingSocio.id), socioData), {
-          loading: 'Actualizando socio...',
-          success: '¡Socio actualizado correctamente!',
-          error: 'No se pudo actualizar al socio',
-        });    
+        toast.promise(
+          personaService.update(parseInt(editingSocio.id), socioData),
+          {
+            loading: "Actualizando socio...",
+            success: "¡Socio actualizado correctamente!",
+            error: "No se pudo actualizar al socio",
+          },
+        );
       } else {
         toast.promise(personaService.create(socioData), {
-          loading: 'Registrando nuevo socio...',
-          success: '¡Socio registrado correctamente!',
-          error: 'No se pudo regitrar al socio',
+          loading: "Registrando nuevo socio...",
+          success: "¡Socio registrado correctamente!",
+          error: "No se pudo regitrar al socio",
         });
       }
 
@@ -362,9 +515,15 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       setSocios(sociosActualizados);
 
       setIsDialogOpen(false);
-      setFormData({ categoria: 'SOCIO', estado: 'activo', responsableNombre: '', responsableApellido: '', responsableDni: '' });
+      setFormData({
+        categoria: "SOCIO",
+        estado: "activo",
+        responsableNombre: "",
+        responsableApellido: "",
+        responsableDni: "",
+      });
     } catch (error) {
-      console.error('Error al guardar socio:', error);
+      console.error("Error al guardar socio:", error);
       const status = (error as any)?.response?.status;
       const data = (error as any)?.response?.data;
       if (status === 409 && data?.registro) {
@@ -374,42 +533,55 @@ export function SociosModule({ userRole }: SociosModuleProps) {
         return;
       }
       const message = data;
-      toast.error(typeof message === 'string' && message.trim().length > 0
-        ? message
-        : (editingSocio ? 'Error al actualizar socio' : 'Error al registrar socio'));
+      toast.error(
+        typeof message === "string" && message.trim().length > 0
+          ? message
+          : editingSocio
+            ? "Error al actualizar socio"
+            : "Error al registrar socio",
+      );
     }
   };
 
   const handleConfirmRegistro = async () => {
     if (!pendingSocioData) return;
     try {
-      await personaService.create({ ...pendingSocioData, usarRegistroExistente: true });
-      toast.success('Socio registrado correctamente');
+      await personaService.create({
+        ...pendingSocioData,
+        usarRegistroExistente: true,
+      });
+      toast.success("Socio registrado correctamente");
       const response = await personaService.getAll();
       const personas = response.data;
       setSocios(mapPersonasToSocios(personas));
       setIsDialogOpen(false);
-      setFormData({ categoria: 'SOCIO', estado: 'activo', responsableNombre: '', responsableApellido: '', responsableDni: '' });
+      setFormData({
+        categoria: "SOCIO",
+        estado: "activo",
+        responsableNombre: "",
+        responsableApellido: "",
+        responsableDni: "",
+      });
       setIsRegistroDialogOpen(false);
       setRegistroDuplicado(null);
       setPendingSocioData(null);
     } catch (err) {
-      console.error('Error al registrar socio con registro existente:', err);
-      toast.error('Error al registrar socio');
+      console.error("Error al registrar socio con registro existente:", err);
+      toast.error("Error al registrar socio");
     }
   };
 
   // Eliminar socio
   const handleDelete = (id: string) => {
-    if (userRole !== 'admin') {
-      toast.error('No tienes permisos para eliminar socios');
+    if (userRole !== "admin") {
+      toast.error("No tienes permisos para eliminar socios");
       return;
     }
-    
-    const socioAEliminar = socios.find(s => s.id === id);
+
+    const socioAEliminar = socios.find((s) => s.id === id);
     if (socioAEliminar) {
       setSocioToDelete(socioAEliminar);
-      setObservacionBaja('');
+      setObservacionBaja("");
       setIsDeleteDialogOpen(true);
     }
   };
@@ -417,15 +589,18 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const handleConfirmDelete = async () => {
     if (socioToDelete) {
       try {
-        await personaService.delete(parseInt(socioToDelete.id), observacionBaja || undefined);
-        setSocios(socios.filter(s => s.id !== socioToDelete.id));
+        await personaService.delete(
+          parseInt(socioToDelete.id),
+          observacionBaja || undefined,
+        );
+        setSocios(socios.filter((s) => s.id !== socioToDelete.id));
         setIsDeleteDialogOpen(false);
         setSocioToDelete(null);
-        setObservacionBaja('');
-        toast.success('Socio eliminado correctamente');
+        setObservacionBaja("");
+        toast.success("Socio eliminado correctamente");
       } catch (error) {
-        console.error('Error al eliminar socio:', error);
-        toast.error('Error al eliminar socio');
+        console.error("Error al eliminar socio:", error);
+        toast.error("Error al eliminar socio");
       }
     }
   };
@@ -433,60 +608,149 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   // Etiquetas para categorías
   const getCategoriaLabel = (categoria: string) => {
     const labels: Record<string, string> = {
-      'SOCIO': 'Socio',
-      'JUGADOR': 'Jugador',
-      'SOCIOYJUGADOR': 'Socio y Jugador',
+      SOCIO: "Socio",
+      JUGADOR: "Jugador",
+      SOCIOYJUGADOR: "Socio y Jugador",
     };
     return labels[categoria] || categoria;
   };
 
-  const getCategoriaFrontendValue = (categoria: string): 'socio' | 'jugador' | 'socio y jugador' => {
+  const getCategoriaFrontendValue = (
+    categoria: string,
+  ): "socio" | "jugador" | "socio y jugador" => {
     switch (categoria) {
-      case 'SOCIO': return 'socio';
-      case 'JUGADOR': return 'jugador';
-      case 'SOCIOYJUGADOR': return 'socio y jugador';
-      default: return 'socio';
+      case "SOCIO":
+        return "socio";
+      case "JUGADOR":
+        return "jugador";
+      case "SOCIOYJUGADOR":
+        return "socio y jugador";
+      default:
+        return "socio";
     }
   };
 
   const handleAltaBaja = (id: string) => {
-    const socioADarAltaBaja = socios.find(s => s.id === id);
-    if(socioADarAltaBaja){
-        setSocioToAltaBaja(socioADarAltaBaja);
-        setIsAltaBajaDialogOpen(true);
+    const socioADarAltaBaja = socios.find((s) => s.id === id);
+    if (socioADarAltaBaja) {
+      setSocioToAltaBaja(socioADarAltaBaja);
+      setIsAltaBajaDialogOpen(true);
     }
-  }
+  };
 
   const handleConfirmAltaBaja = async () => {
-    if(socioToAltaBaja){
-      try{
-        await personaService.toggleActive(parseInt(socioToAltaBaja.id), observacionBaja || undefined);
-
-        // Buscamos al socio en la lista y mapeamos el array
-        const sociosActualizados = socios.map(s => {
-          if (s.id === socioToAltaBaja.id) {
-            // Retornamos el socio con el estado invertido
-            return { ...s, activo: !s.activo }; 
-          }
-          return s;
-        });
-        setSocios(sociosActualizados);
-
-        setObservacionBaja('');
+    if (socioToAltaBaja) {
+      try {
+        await personaService.toggleActive(
+          parseInt(socioToAltaBaja.id),
+          observacionBaja || undefined,
+        );
+        // Refresh de socios después de dar de alta/baja
+        const response = await personaService.getAll();
+        setSocios(mapPersonasToSocios(response.data));
+        cargarGruposFamiliares();
+        setObservacionBaja("");
         setIsAltaBajaDialogOpen(false);
         setSocioToAltaBaja(null);
-        if(socioToAltaBaja.activo){
-          toast.warning('Socio dado de BAJA correctamente');
-        }
-        else{
-          toast.success('Socio dado de ALTA correctamente');
+        if (socioToAltaBaja.activo) {
+          toast.warning("Socio dado de BAJA correctamente");
+        } else {
+          toast.success("Socio dado de ALTA correctamente");
         }
       } catch (error) {
-        console.error('Error al dar Alta/Baja del Socio');
-        toast.error('Error al dar Alta/Baja del Socio');
+        console.error("Error al dar Alta/Baja del Socio");
+        toast.error("Error al dar Alta/Baja del Socio");
       }
     }
-  }
+  };
+  // Lógica para manejar la creación y edición de grupos familiares
+  const handleOpenGrupoDialog = (grupo?: GrupoFamiliar) => {
+    if (grupo) {
+      setEditingGrupo(grupo);
+      setSelectedResponsable(String(grupo.responsable.id));
+      setSelectedIntegrantes(grupo.integrantes.map((i) => String(i.id)));
+    } else {
+      setEditingGrupo(null);
+      setSelectedResponsable("");
+      setSelectedIntegrantes([]);
+    }
+    setIsGrupoDialogOpen(true);
+  };
+
+  // Guardar grupo familiar (crear o actualizar)
+  const handleSaveGrupo = async () => {
+    if (!selectedResponsable) {
+      toast.error("Debe seleccionar un responsable.");
+      return;
+    }
+
+    // El total de personas en el grupo es el responsable + integrantes seleccionados
+    const uniqueIntegrantes = new Set([
+      ...selectedIntegrantes.filter((id) => id !== selectedResponsable),
+    ]);
+    const totalPersonas = 1 + uniqueIntegrantes.size;
+
+    if (totalPersonas < 3 || totalPersonas > 8) {
+      toast.error("Un grupo familiar debe tener entre 3 y 8 personas.");
+      return;
+    }
+
+    const dto = {
+      responsableId: Number(selectedResponsable),
+      integrantesIds: Array.from(uniqueIntegrantes).map(Number),
+    };
+
+    try {
+      if (editingGrupo) {
+        await grupoFamiliarService.update(Number(editingGrupo.id), dto);
+        toast.success("Grupo actualizado correctamente");
+      } else {
+        await grupoFamiliarService.create(dto);
+        toast.success("Grupo familiar creado");
+      }
+      setIsGrupoDialogOpen(false);
+      cargarGruposFamiliares();
+
+      // Recargar socios para actualizar el estado de "grupoFamiliarId"
+      const res = await personaService.getAll();
+      setSocios(mapPersonasToSocios(res.data));
+    } catch (error: any) {
+      toast.error(error.response?.data || "Error al guardar el grupo familiar");
+    }
+  };
+
+  const handleDeleteGrupo = async (id: number | string) => {
+    if (
+      window.confirm(
+        "¿Está seguro de eliminar este grupo familiar? Las personas NO serán eliminadas.",
+      )
+    ) {
+      try {
+        await grupoFamiliarService.delete(id);
+        toast.success("Grupo eliminado correctamente");
+        cargarGruposFamiliares();
+
+        // Recargar socios
+        const res = await personaService.getAll();
+        setSocios(mapPersonasToSocios(res.data));
+      } catch (error) {
+        toast.error("Error al eliminar el grupo");
+      }
+    }
+  };
+
+  // Filtrar personas disponibles para el grupo (activas y sin grupo o del grupo actual)
+  const personasDisponiblesParaGrupo = socios.filter(
+    (s) =>
+      s.activo === true &&
+      (s.grupoFamiliarId === null ||
+        s.grupoFamiliarId === undefined ||
+        (editingGrupo && s.grupoFamiliarId === Number(editingGrupo.id))),
+  );
+
+  const responsablesDisponibles = personasDisponiblesParaGrupo.filter((s) =>
+    s.categoria.includes("SOCIO"),
+  );
 
   if (loading) return <div>Cargando socios...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -498,7 +762,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle>Gestión de Socios</CardTitle>
-              <CardDescription>Alta, baja y modificación de socios del club</CardDescription>
+              <CardDescription>
+                Alta, baja y modificación de socios del club
+              </CardDescription>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
@@ -509,9 +775,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingSocio ? 'Editar Socio' : 'Nuevo Socio'}</DialogTitle>
+                  <DialogTitle>
+                    {editingSocio ? "Editar Socio" : "Nuevo Socio"}
+                  </DialogTitle>
                   <DialogDescription>
-                    Complete los datos del socio. Los campos marcados son obligatorios.
+                    Complete los datos del socio. Los campos marcados son
+                    obligatorios.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
@@ -519,28 +788,43 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <Label htmlFor="apellido">Apellido *</Label>
                     <Input
                       id="apellido"
-                      value={formData.apellido || ''}
+                      value={formData.apellido || ""}
                       onChange={(e) => {
                         setFormData({ ...formData, apellido: e.target.value });
-                        if (e.target.value.trim().length > 0) setFormErrors(prev => ({ ...prev, apellido: false }));
+                        if (e.target.value.trim().length > 0)
+                          setFormErrors((prev) => ({
+                            ...prev,
+                            apellido: false,
+                          }));
                       }}
-                      className={formErrors.apellido ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      className={
+                        formErrors.apellido
+                          ? "border-red-500 focus-visible:ring-red-500"
+                          : ""
+                      }
                       required
                     />
                     {formErrors.apellido && (
-                      <p className="text-xs text-red-600">Completa el apellido</p>
+                      <p className="text-xs text-red-600">
+                        Completa el apellido
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="nombre">Nombre *</Label>
                     <Input
                       id="nombre"
-                      value={formData.nombre || ''}
+                      value={formData.nombre || ""}
                       onChange={(e) => {
                         setFormData({ ...formData, nombre: e.target.value });
-                        if (e.target.value.trim().length > 0) setFormErrors(prev => ({ ...prev, nombre: false }));
+                        if (e.target.value.trim().length > 0)
+                          setFormErrors((prev) => ({ ...prev, nombre: false }));
                       }}
-                      className={formErrors.nombre ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      className={
+                        formErrors.nombre
+                          ? "border-red-500 focus-visible:ring-red-500"
+                          : ""
+                      }
                       required
                     />
                     {formErrors.nombre && (
@@ -551,21 +835,23 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <Label htmlFor="dni">DNI *</Label>
                     <Input
                       id="dni"
-                      value={formData.dni || ''}
+                      value={formData.dni || ""}
                       onChange={(e) => {
                         const val = e.target.value;
                         setFormData({ ...formData, dni: val });
-                        setFormErrors(prev => ({ 
-                        ...prev, 
-                        dni: val.trim().length === 0 || !DNI_REGEX.test(val) 
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          dni: val.trim().length === 0 || !DNI_REGEX.test(val),
                         }));
-                        }}
-                        className={formErrors.dni ? 'border-red-500' : ''}
+                      }}
+                      className={formErrors.dni ? "border-red-500" : ""}
                     />
                     {formErrors.dni && (
                       <p className="text-xs text-red-600 mt-1">
-                      {formData.dni?.length === 0 ? 'Completa el DNI' : 'DNI inválido (debe tener 7 u 8 números)'}
-                    </p>
+                        {formData.dni?.length === 0
+                          ? "Completa el DNI"
+                          : "DNI inválido (debe tener 7 u 8 números)"}
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -573,79 +859,122 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <div className="grid grid-cols-3 gap-2">
                       <Select
                         value={fechaNacimientoParts.day}
-                        onValueChange={(value) => updateFechaNacimiento(value, fechaNacimientoParts.month, fechaNacimientoParts.year)}
-                        className={formErrors.fechaNacimiento ? 'border-red-500 focus-visible:ring-red-500' : ''}                        
+                        onValueChange={(value) =>
+                          updateFechaNacimiento(
+                            value,
+                            fechaNacimientoParts.month,
+                            fechaNacimientoParts.year,
+                          )
+                        }
+                        className={
+                          formErrors.fechaNacimiento
+                            ? "border-red-500 focus-visible:ring-red-500"
+                            : ""
+                        }
                       >
                         <SelectTrigger aria-label="Día">
                           <SelectValue placeholder="Día" />
                         </SelectTrigger>
                         <SelectContent>
                           {days.map((d) => (
-                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                            <SelectItem key={d} value={d}>
+                              {d}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
 
                       <Select
                         value={fechaNacimientoParts.month}
-                        onValueChange={(value) => updateFechaNacimiento(fechaNacimientoParts.day, value, fechaNacimientoParts.year)}
-                        className={formErrors.fechaNacimiento ? 'border-red-500 focus-visible:ring-red-500' : ''} 
+                        onValueChange={(value) =>
+                          updateFechaNacimiento(
+                            fechaNacimientoParts.day,
+                            value,
+                            fechaNacimientoParts.year,
+                          )
+                        }
+                        className={
+                          formErrors.fechaNacimiento
+                            ? "border-red-500 focus-visible:ring-red-500"
+                            : ""
+                        }
                       >
                         <SelectTrigger aria-label="Mes">
                           <SelectValue placeholder="Mes" />
                         </SelectTrigger>
                         <SelectContent>
                           {months.map((m) => (
-                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            <SelectItem key={m.value} value={m.value}>
+                              {m.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
 
                       <Select
                         value={fechaNacimientoParts.year}
-                        onValueChange={(value) => updateFechaNacimiento(fechaNacimientoParts.day, fechaNacimientoParts.month, value)}
-                        className={formErrors.fechaNacimiento ? 'border-red-500 focus-visible:ring-red-500' : ''}                     
+                        onValueChange={(value) =>
+                          updateFechaNacimiento(
+                            fechaNacimientoParts.day,
+                            fechaNacimientoParts.month,
+                            value,
+                          )
+                        }
+                        className={
+                          formErrors.fechaNacimiento
+                            ? "border-red-500 focus-visible:ring-red-500"
+                            : ""
+                        }
                       >
                         <SelectTrigger aria-label="Año">
                           <SelectValue placeholder="Año" />
                         </SelectTrigger>
                         <SelectContent>
                           {years.map((y) => (
-                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                            <SelectItem key={y} value={y}>
+                              {y}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     {formErrors.fechaNacimiento && (
-                      <p className="text-xs text-red-600">Completa día, mes y año</p>
+                      <p className="text-xs text-red-600">
+                        Completa día, mes y año
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="direccion">Dirección</Label>
                     <Input
                       id="direccion"
-                      value={formData.direccion || ''}
-                      onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}                    
+                      value={formData.direccion || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, direccion: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="telefono">Teléfono</Label>
                     <Input
                       id="telefono"
-                      value={formData.telefono || ''}
+                      value={formData.telefono || ""}
                       onChange={(e) => {
                         const val = e.target.value;
                         setFormData({ ...formData, telefono: val });
                         // El teléfono suele ser opcional, validamos solo si hay algo escrito
-                        setFormErrors(prev => ({ 
-                        ...prev, 
-                        telefono: val.length > 0 && !TEL_REGEX.test(val) 
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          telefono: val.length > 0 && !TEL_REGEX.test(val),
                         }));
                       }}
-                      className={formErrors.telefono ? 'border-red-500' : ''}                   
+                      className={formErrors.telefono ? "border-red-500" : ""}
                     />
                     {formErrors.telefono && (
-                    <p className="text-xs text-red-600 mt-1">Formato de teléfono inválido (solo números (entre 10 y 15))</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        Formato de teléfono inválido (solo números (entre 10 y
+                        15))
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -653,20 +982,22 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <Input
                       id="correo"
                       type="email"
-                      value={formData.correo || ''}
+                      value={formData.correo || ""}
                       onChange={(e) => {
                         const val = e.target.value;
                         setFormData({ ...formData, correo: val });
                         // Validamos solo si hay algo escrito
-                        setFormErrors(prev => ({ 
-                        ...prev, 
-                        email: val.length > 0 && !EMAIL_REGEX.test(val) 
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          email: val.length > 0 && !EMAIL_REGEX.test(val),
                         }));
                       }}
-                      className={formErrors.email ? 'border-red-500' : ''}
+                      className={formErrors.email ? "border-red-500" : ""}
                     />
                     {formErrors.email && (
-                      <p className="text-xs text-red-600 mt-1">Ingresa un correo electrónico válido</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        Ingresa un correo electrónico válido
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -678,12 +1009,21 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                         setFormData({
                           ...formData,
                           categoria: nextCategoria,
-                          ...(nextCategoria !== 'JUGADOR'
-                            ? { responsableNombre: '', responsableApellido: '', responsableDni: '' }
+                          ...(nextCategoria !== "JUGADOR"
+                            ? {
+                                responsableNombre: "",
+                                responsableApellido: "",
+                                responsableDni: "",
+                              }
                             : {}),
                         });
-                        if (nextCategoria !== 'JUGADOR') {
-                          setFormErrors(prev => ({ ...prev, responsableNombre: false, responsableApellido: false, responsableDni: false }));
+                        if (nextCategoria !== "JUGADOR") {
+                          setFormErrors((prev) => ({
+                            ...prev,
+                            responsableNombre: false,
+                            responsableApellido: false,
+                            responsableDni: false,
+                          }));
                         }
                       }}
                     >
@@ -693,95 +1033,170 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       <SelectContent>
                         <SelectItem value="SOCIO">Socio</SelectItem>
                         <SelectItem value="JUGADOR">Jugador</SelectItem>
-                        <SelectItem value="SOCIOYJUGADOR">Socio y Jugador</SelectItem>
+                        <SelectItem value="SOCIOYJUGADOR">
+                          Socio y Jugador
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
-                  {formData.categoria === 'JUGADOR' && (
+                  {formData.categoria === "JUGADOR" && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="responsableApellido">Apellido del Responsable *</Label>
+                        <Label htmlFor="responsableApellido">
+                          Apellido del Responsable *
+                        </Label>
                         <Input
                           id="responsableApellido"
-                          value={formData.responsableApellido || ''}
+                          value={formData.responsableApellido || ""}
                           onChange={(e) => {
-                            setFormData({ ...formData, responsableApellido: e.target.value });
-                            if (e.target.value.trim().length > 0) setFormErrors(prev => ({ ...prev, responsableApellido: false }));
+                            setFormData({
+                              ...formData,
+                              responsableApellido: e.target.value,
+                            });
+                            if (e.target.value.trim().length > 0)
+                              setFormErrors((prev) => ({
+                                ...prev,
+                                responsableApellido: false,
+                              }));
                           }}
-                          className={formErrors.responsableApellido ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                          className={
+                            formErrors.responsableApellido
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                           required
                         />
                         {formErrors.responsableApellido && (
-                          <p className="text-xs text-red-600">Completa el apellido del responsable</p>
+                          <p className="text-xs text-red-600">
+                            Completa el apellido del responsable
+                          </p>
                         )}
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="responsableNombre">Nombre del Responsable *</Label>
+                        <Label htmlFor="responsableNombre">
+                          Nombre del Responsable *
+                        </Label>
                         <Input
                           id="responsableNombre"
-                          value={formData.responsableNombre || ''}
+                          value={formData.responsableNombre || ""}
                           onChange={(e) => {
-                            setFormData({ ...formData, responsableNombre: e.target.value });
-                            if (e.target.value.trim().length > 0) setFormErrors(prev => ({ ...prev, responsableNombre: false }));
+                            setFormData({
+                              ...formData,
+                              responsableNombre: e.target.value,
+                            });
+                            if (e.target.value.trim().length > 0)
+                              setFormErrors((prev) => ({
+                                ...prev,
+                                responsableNombre: false,
+                              }));
                           }}
-                          className={formErrors.responsableNombre ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                          className={
+                            formErrors.responsableNombre
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                           required
                         />
                         {formErrors.responsableNombre && (
-                          <p className="text-xs text-red-600">Completa el nombre del responsable</p>
+                          <p className="text-xs text-red-600">
+                            Completa el nombre del responsable
+                          </p>
                         )}
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="responsableDni">DNI del Responsable *</Label>
+                        <Label htmlFor="responsableDni">
+                          DNI del Responsable *
+                        </Label>
                         <Input
                           id="responsableDni"
-                          value={formData.responsableDni || ''}
+                          value={formData.responsableDni || ""}
                           onChange={(e) => {
-                            setFormData({ ...formData, responsableDni: e.target.value });
-                            if (e.target.value.trim().length > 0) setFormErrors(prev => ({ ...prev, responsableDni: false }));
+                            setFormData({
+                              ...formData,
+                              responsableDni: e.target.value,
+                            });
+                            if (e.target.value.trim().length > 0)
+                              setFormErrors((prev) => ({
+                                ...prev,
+                                responsableDni: false,
+                              }));
                           }}
-                          className={formErrors.responsableDni ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                          className={
+                            formErrors.responsableDni
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                           required
                         />
                         {formErrors.responsableDni && (
-                          <p className="text-xs text-red-600">Completa el DNI del responsable</p>
+                          <p className="text-xs text-red-600">
+                            Completa el DNI del responsable
+                          </p>
                         )}
                       </div>
                     </>
                   )}
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label>Promociones</Label>
                     <div
                       className="border rounded-lg divide-y overflow-y-auto"
-                      style={{ maxHeight: promociones.filter(p => p.activo !== false).length > 4 ? 200 : undefined }}
+                      style={{
+                        maxHeight:
+                          promociones.filter((p) => p.activo !== false).length >
+                          4
+                            ? 200
+                            : undefined,
+                      }}
                     >
-                      {promociones.filter(p => p.activo !== false).map(promo => {
-                        const isSelected = selectedPromocionId === Number(promo.id);
-                        return (
-                          <div key={promo.id} className="flex items-start gap-3 p-3">
-                            <Checkbox
-                              id={`promo-${promo.id}`}
-                              checked={isSelected}
-                              onCheckedChange={(val) => {
-                                setSelectedPromocionId(val ? Number(promo.id) : null);
-                              }}
-                            />
-                            <label htmlFor={`promo-${promo.id}`} className="flex-1 cursor-pointer">
-                              <div className="font-medium">{promo.nombre}</div>
-                              {promo.descripcion && (
-                                <div className="text-sm text-gray-500">{promo.descripcion}</div>
-                              )}
-                              <div className="text-xs font-bold text-blue-600">
-                                {promo.descuento}{promo.tipoDescuento === 'PORCENTAJE' ? '%' : '$'} de descuento
-                              </div>
-                            </label>
-                          </div>
-                        );
-                      })}
-                      {promociones.filter(p => p.activo !== false).length === 0 && (
-                        <div className="p-3 text-sm text-gray-500">No hay promociones activas</div>
+                      {promociones
+                        .filter((p) => p.activo !== false)
+                        .map((promo) => {
+                          const isSelected =
+                            selectedPromocionId === Number(promo.id);
+                          return (
+                            <div
+                              key={promo.id}
+                              className="flex items-start gap-3 p-3"
+                            >
+                              <Checkbox
+                                id={`promo-${promo.id}`}
+                                checked={isSelected}
+                                onCheckedChange={(val) => {
+                                  setSelectedPromocionId(
+                                    val ? Number(promo.id) : null,
+                                  );
+                                }}
+                              />
+                              <label
+                                htmlFor={`promo-${promo.id}`}
+                                className="flex-1 cursor-pointer"
+                              >
+                                <div className="font-medium">
+                                  {promo.nombre}
+                                </div>
+                                {promo.descripcion && (
+                                  <div className="text-sm text-gray-500">
+                                    {promo.descripcion}
+                                  </div>
+                                )}
+                                <div className="text-xs font-bold text-blue-600">
+                                  {promo.descuento}
+                                  {promo.tipoDescuento === "PORCENTAJE"
+                                    ? "%"
+                                    : "$"}{" "}
+                                  de descuento
+                                </div>
+                              </label>
+                            </div>
+                          );
+                        })}
+                      {promociones.filter((p) => p.activo !== false).length ===
+                        0 && (
+                        <div className="p-3 text-sm text-gray-500">
+                          No hay promociones activas
+                        </div>
                       )}
                     </div>
                     {selectedPromocionId && (
@@ -792,28 +1207,37 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                  >
                     Cancelar
                   </Button>
                   <Button onClick={handleSave}>
-                    {editingSocio ? 'Guardar Cambios' : 'Registrar Socio'}
+                    {editingSocio ? "Guardar Cambios" : "Registrar Socio"}
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
 
             {/* Dialog de Confirmación de Eliminación */}
-            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <Dialog
+              open={isDeleteDialogOpen}
+              onOpenChange={setIsDeleteDialogOpen}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Eliminar Socio</DialogTitle>
                   <DialogDescription>
-                    ¿Estás seguro de que deseas eliminar a {socioToDelete?.apellido}, {socioToDelete?.nombre}?
+                    ¿Estás seguro de que deseas eliminar a{" "}
+                    {socioToDelete?.apellido}, {socioToDelete?.nombre}?
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="observacionBaja">Observación de Baja (opcional)</Label>
+                    <Label htmlFor="observacionBaja">
+                      Observación de Baja (opcional)
+                    </Label>
                     <Input
                       id="observacionBaja"
                       placeholder="Ej: Traslado a otra ciudad, cambio de trabajo..."
@@ -823,7 +1247,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     />
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsDeleteDialogOpen(false)}
+                    >
                       Cancelar
                     </Button>
                     <Button variant="destructive" onClick={handleConfirmDelete}>
@@ -834,78 +1261,110 @@ export function SociosModule({ userRole }: SociosModuleProps) {
               </DialogContent>
             </Dialog>
 
-            <Dialog open={isRegistroDialogOpen} onOpenChange={setIsRegistroDialogOpen}>
+            <Dialog
+              open={isRegistroDialogOpen}
+              onOpenChange={setIsRegistroDialogOpen}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Persona ya registrada</DialogTitle>
                   <DialogDescription>
                     {registroDuplicado?.dni
                       ? `Esta persona ya se encuentra en el registro (DNI: ${registroDuplicado.dni}).`
-                      : 'Esta persona ya se encuentra en el registro.'}
+                      : "Esta persona ya se encuentra en el registro."}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
                   <div className="text-sm text-gray-600">
-                    <div><span className="font-semibold">Apellido:</span> {registroDuplicado?.apellido || '-'}</div>
-                    <div><span className="font-semibold">Nombre:</span> {registroDuplicado?.nombre || '-'}</div>
-                    <div><span className="font-semibold">DNI:</span> {registroDuplicado?.dni || '-'}</div>
+                    <div>
+                      <span className="font-semibold">Apellido:</span>{" "}
+                      {registroDuplicado?.apellido || "-"}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Nombre:</span>{" "}
+                      {registroDuplicado?.nombre || "-"}
+                    </div>
+                    <div>
+                      <span className="font-semibold">DNI:</span>{" "}
+                      {registroDuplicado?.dni || "-"}
+                    </div>
                   </div>
                   <p className="text-sm text-gray-600">
-                    ¿Desea crear la persona usando los datos del registro y completar con los datos ingresados?
+                    ¿Desea crear la persona usando los datos del registro y
+                    completar con los datos ingresados?
                   </p>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => {
-                      setIsRegistroDialogOpen(false);
-                      setRegistroDuplicado(null);
-                      setPendingSocioData(null);
-                    }}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsRegistroDialogOpen(false);
+                        setRegistroDuplicado(null);
+                        setPendingSocioData(null);
+                      }}
+                    >
                       Cancelar
                     </Button>
-                    <Button onClick={handleConfirmRegistro}>
-                      Aceptar
-                    </Button>
+                    <Button onClick={handleConfirmRegistro}>Aceptar</Button>
                   </div>
                 </div>
               </DialogContent>
             </Dialog>
             {/* Dialog de Confirmación de Alta/Baja */}
-            <Dialog open={isAltaBajaDialogOpen} onOpenChange={setIsAltaBajaDialogOpen}>
+            <Dialog
+              open={isAltaBajaDialogOpen}
+              onOpenChange={setIsAltaBajaDialogOpen}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Dar Alta/Baja Socio</DialogTitle>
                   <DialogDescription>
-                    ¿Estás seguro de que deseas dar de {' '}
-                    <span style={{ color: socioToAltaBaja?.activo ? 'orange' : 'green', fontWeight: 'bold' }}>
-                      {socioToAltaBaja?.activo ? 'BAJA' : 'ALTA'}
-                    </span>
-                    {' '} a {socioToAltaBaja?.apellido}, {socioToAltaBaja?.nombre}?
+                    ¿Estás seguro de que deseas dar de{" "}
+                    <span
+                      style={{
+                        color: socioToAltaBaja?.activo ? "orange" : "green",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {socioToAltaBaja?.activo ? "BAJA" : "ALTA"}
+                    </span>{" "}
+                    a {socioToAltaBaja?.apellido}, {socioToAltaBaja?.nombre}?
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  {socioToAltaBaja?.activo && 
-                  (<div>
-                    <Label htmlFor="observacionAltaBaja">Observación de Baja (opcional)</Label>
-                    <Input
-                      id="observacionBaja"
-                      placeholder="Ej: Traslado a otra ciudad, cambio de trabajo..."
-                      value={observacionBaja}
-                      onChange={(e) => setObservacionBaja(e.target.value)}
-                      className="mt-2"
-                    />
-                  </div>)}
+                  {socioToAltaBaja?.activo && (
+                    <div>
+                      <Label htmlFor="observacionAltaBaja">
+                        Observación de Baja (opcional)
+                      </Label>
+                      <Input
+                        id="observacionBaja"
+                        placeholder="Ej: Traslado a otra ciudad, cambio de trabajo..."
+                        value={observacionBaja}
+                        onChange={(e) => setObservacionBaja(e.target.value)}
+                        className="mt-2"
+                      />
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsAltaBajaDialogOpen(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAltaBajaDialogOpen(false)}
+                    >
                       Cancelar
                     </Button>
-                    <Button 
-                      style={{ 
-                        backgroundColor: socioToAltaBaja?.activo ? '#f97316' : '#16a34a', 
-                        color: 'white',
-                        display: 'inline-flex' 
+                    <Button
+                      style={{
+                        backgroundColor: socioToAltaBaja?.activo
+                          ? "#f97316"
+                          : "#16a34a",
+                        color: "white",
+                        display: "inline-flex",
                       }}
                       onClick={handleConfirmAltaBaja}
                     >
-                      {socioToAltaBaja?.activo ? 'Confirmar Baja' : 'Confirmar Alta'}
+                      {socioToAltaBaja?.activo
+                        ? "Confirmar Baja"
+                        : "Confirmar Alta"}
                     </Button>
                   </div>
                 </div>
@@ -914,8 +1373,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs
+            value={activeTab}
+            onValueChange={handleTabChange}
+            className="w-full"
+          >
+            <TabsList className="grid w-full h-auto grid-cols-1 md:grid-cols-3 gap-1 p-1">
               <TabsTrigger value="socios">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Socios Activos
@@ -923,6 +1386,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
               <TabsTrigger value="historial">
                 <History className="w-4 h-4 mr-2" />
                 Historial de Registros
+              </TabsTrigger>
+              <TabsTrigger value="grupos">
+                <Search className="w-4 h-4 mr-2" />
+                Grupos Familiares
               </TabsTrigger>
             </TabsList>
 
@@ -939,7 +1406,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     className="pl-10"
                   />
                 </div>
-                <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                <Select
+                  value={filterCategoria}
+                  onValueChange={setFilterCategoria}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Filtrar por categoría" />
                   </SelectTrigger>
@@ -947,7 +1417,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <SelectItem value="all">Todas las categorías</SelectItem>
                     <SelectItem value="socio">Socio</SelectItem>
                     <SelectItem value="jugador">Jugador</SelectItem>
-                    <SelectItem value="socio y jugador">Socio y Jugador</SelectItem>
+                    <SelectItem value="socio y jugador">
+                      Socio y Jugador
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={filterDeporte} onValueChange={setFilterDeporte}>
@@ -963,15 +1435,18 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={activeFilter} onValueChange={(v) => setActiveFilter(v as any)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar filtro" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="activos">Activos</SelectItem>
-                      <SelectItem value="inactivos">Inactivos</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <Select
+                  value={activeFilter}
+                  onValueChange={(v) => setActiveFilter(v as any)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar filtro" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="activos">Activos</SelectItem>
+                    <SelectItem value="inactivos">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Table */}
@@ -992,7 +1467,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                   <TableBody>
                     {filteredSocios.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                        <TableCell
+                          colSpan={8}
+                          className="text-center text-gray-500 py-8"
+                        >
                           No se encontraron socios
                         </TableCell>
                       </TableRow>
@@ -1001,9 +1479,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                         <TableRow key={socio.id}>
                           <TableCell>
                             <div>
-                              <div>{socio.apellido}, {socio.nombre}</div>
+                              <div>
+                                {socio.apellido}, {socio.nombre}
+                              </div>
                               {socio.responsablePago && (
-                                <div className="text-sm text-gray-400">Responsable: {socio.responsablePago}</div>
+                                <div className="text-sm text-gray-400">
+                                  Responsable: {socio.responsablePago}
+                                </div>
                               )}
                             </div>
                           </TableCell>
@@ -1011,39 +1493,56 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             <div>
                               <div>{socio.dni}</div>
                               {socio.responsablePago && (
-                                <div className="text-sm text-gray-400">DNI responsable: {socio.responsableDni || '-'}</div>
+                                <div className="text-sm text-gray-400">
+                                  DNI responsable: {socio.responsableDni || "-"}
+                                </div>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{getCategoriaLabel(socio.categoria)}</Badge>
+                            <Badge variant="outline">
+                              {getCategoriaLabel(socio.categoria)}
+                            </Badge>
                           </TableCell>
                           <TableCell>
-                          {calcularEdad(socio?.fechaNacimiento) === 0 
-                          ? "Sin edad" 
-                          : `${calcularEdad(socio?.fechaNacimiento)} años`}
+                            {calcularEdad(socio?.fechaNacimiento) === 0
+                              ? "Sin edad"
+                              : `${calcularEdad(socio?.fechaNacimiento)} años`}
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
-                              <div>{(socio?.telefono || "Sin teléfono")}</div>
-                              <div className="text-gray-500">{socio?.email || "Sin email"}</div>
+                              <div>{socio?.telefono || "Sin teléfono"}</div>
+                              <div className="text-gray-500">
+                                {socio?.email || "Sin email"}
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {getDeportesNombres(socio.deportesIds).length > 0 ? (
-                                getDeportesNombres(socio.deportesIds).map((deporte, idx) => (
-                                  <Badge key={idx} variant="secondary" className="text-xs">
-                                    {deporte}
-                                  </Badge>
-                                ))
+                              {getDeportesNombres(socio.deportesIds).length >
+                              0 ? (
+                                getDeportesNombres(socio.deportesIds).map(
+                                  (deporte, idx) => (
+                                    <Badge
+                                      key={idx}
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      {deporte}
+                                    </Badge>
+                                  ),
+                                )
                               ) : (
-                                <span className="text-sm text-gray-400">Sin deportes</span>
+                                <span className="text-sm text-gray-400">
+                                  Sin deportes
+                                </span>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="text-sm">{formatDate(socio.fechaRegistro)}</div>
+                            <div className="text-sm">
+                              {formatDate(socio.fechaRegistro)}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
@@ -1052,7 +1551,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 size="sm"
                                 onClick={() => handleAltaBaja(socio.id)}
                               >
-                                <ArrowUpDown color="#ea580c" className="w-4 h-4"/>
+                                <ArrowUpDown
+                                  color="#ea580c"
+                                  className="w-4 h-4"
+                                />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -1061,7 +1563,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              {userRole === 'admin' && (
+                              {userRole === "admin" && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1088,7 +1590,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
             <TabsContent value="historial" className="space-y-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <p className="text-sm text-blue-800">
-                  Este es un registro histórico de todos los socios registrados en el sistema. Este listado es de solo lectura y no puede ser modificado.
+                  Este es un registro histórico de todos los socios registrados
+                  en el sistema. Este listado es de solo lectura y no puede ser
+                  modificado.
                 </p>
               </div>
 
@@ -1105,7 +1609,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                 </div>
                 <div className="w-full md:w-64">
                   <Label className="mb-1 block">Filtro</Label>
-                  <Select value={historialFilter} onValueChange={(v) => setHistorialFilter(v as any)}>
+                  <Select
+                    value={historialFilter}
+                    onValueChange={(v) => setHistorialFilter(v as any)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar filtro" />
                     </SelectTrigger>
@@ -1134,43 +1641,71 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                   <TableBody>
                     {filteredHistorial.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-gray-500 py-8"
+                        >
                           No se encontraron registros
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredHistorial.map((registro, index) => (
                         <Fragment>
-                        <TableRow key={`registro-${registro.id}`}>
-                          <TableCell className="text-center">
-                            {registro.fechaBaja && (
-                              <button
-                                onClick={() => setExpandedRegistroId(expandedRegistroId === registro.id ? null : registro.id)}
-                                className="text-blue-600 hover:text-blue-800 cursor-pointer text-lg leading-none"
-                              >
-                                {expandedRegistroId === registro.id ? <SquareArrowDown/> : <SquareArrowRight/>}
-                              </button>
-                            )}
-                          </TableCell>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell>{registro.apellido}, {registro.nombre}</TableCell>
-                          <TableCell>{registro.dni}</TableCell>
-                          <TableCell>{formatDate(registro.fechaRegistro)}</TableCell>
-                          <TableCell>
-                            {registro.fechaBaja ? formatDate(registro.fechaBaja) : '-'}
-                          </TableCell>
-                        </TableRow>
-                        {/* Filas expandidas con observación de baja */}
-                        {expandedRegistroId === registro.id && registro.fechaBaja && (
-                          <TableRow key={`expanded-${registro.id}`} className="bg-gray-50">
-                            <TableCell colSpan={6} className="py-4">
-                              <div className="pl-8 border-l-2 border-blue-400">
-                                <p className="text-sm font-semibold text-gray-700 mb-2">Razón de Baja:</p>
-                                <p className="text-sm text-gray-600 italic">{registro?.observacionBaja || "Sin especificar"}</p>
-                              </div>
+                          <TableRow key={`registro-${registro.id}`}>
+                            <TableCell className="text-center">
+                              {registro.fechaBaja && (
+                                <button
+                                  onClick={() =>
+                                    setExpandedRegistroId(
+                                      expandedRegistroId === registro.id
+                                        ? null
+                                        : registro.id,
+                                    )
+                                  }
+                                  className="text-blue-600 hover:text-blue-800 cursor-pointer text-lg leading-none"
+                                >
+                                  {expandedRegistroId === registro.id ? (
+                                    <SquareArrowDown />
+                                  ) : (
+                                    <SquareArrowRight />
+                                  )}
+                                </button>
+                              )}
+                            </TableCell>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                              {registro.apellido}, {registro.nombre}
+                            </TableCell>
+                            <TableCell>{registro.dni}</TableCell>
+                            <TableCell>
+                              {formatDate(registro.fechaRegistro)}
+                            </TableCell>
+                            <TableCell>
+                              {registro.fechaBaja
+                                ? formatDate(registro.fechaBaja)
+                                : "-"}
                             </TableCell>
                           </TableRow>
-                        )}
+                          {/* Filas expandidas con observación de baja */}
+                          {expandedRegistroId === registro.id &&
+                            registro.fechaBaja && (
+                              <TableRow
+                                key={`expanded-${registro.id}`}
+                                className="bg-gray-50"
+                              >
+                                <TableCell colSpan={6} className="py-4">
+                                  <div className="pl-8 border-l-2 border-blue-400">
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">
+                                      Razón de Baja:
+                                    </p>
+                                    <p className="text-sm text-gray-600 italic">
+                                      {registro?.observacionBaja ||
+                                        "Sin especificar"}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
                         </Fragment>
                       ))
                     )}
@@ -1179,7 +1714,263 @@ export function SociosModule({ userRole }: SociosModuleProps) {
               </div>
 
               <div className="text-sm text-gray-500">
-                Mostrando {filteredHistorial.length} de {historialRegistros.length} registros históricos
+                Mostrando {filteredHistorial.length} de{" "}
+                {historialRegistros.length} registros históricos
+              </div>
+            </TabsContent>
+            {/* Tab de Grupos Familiares */}
+            <TabsContent value="grupos" className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex-1 mr-4">
+                  <p className="text-sm text-green-800">
+                    Los grupos familiares vinculan a personas ya existentes. Un
+                    grupo requiere al menos 3 integrantes en total, incluyendo a
+                    un responsable que debe ser Socio.
+                  </p>
+                </div>
+                <Dialog
+                  open={isGrupoDialogOpen}
+                  onOpenChange={setIsGrupoDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button onClick={() => handleOpenGrupoDialog()}>
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Nuevo Grupo Familiar
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {editingGrupo
+                          ? "Editar Grupo Familiar"
+                          : "Nuevo Grupo Familiar"}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Seleccione el responsable y los integrantes. Todas las
+                        personas deben estar activas y no pertenecer a otro
+                        grupo.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Responsable del Grupo *</Label>
+                        <Select
+                          value={selectedResponsable}
+                          onValueChange={setSelectedResponsable}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione un socio responsable" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {responsablesDisponibles.map((s) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                {s.apellido}, {s.nombre} (DNI: {s.dni}) -{" "}
+                                {getCategoriaLabel(s.categoria)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Integrantes adicionales</Label>
+                        <div className="border rounded-md p-2 h-64 overflow-y-auto space-y-2">
+                          {personasDisponiblesParaGrupo
+                            .filter((s) => String(s.id) !== selectedResponsable) // El responsable no se lista aquí
+                            .map((socio) => (
+                              <div
+                                key={socio.id}
+                                className="flex items-center space-x-2"
+                              >
+                                <Checkbox
+                                  id={`int-${socio.id}`}
+                                  checked={selectedIntegrantes.includes(
+                                    String(socio.id),
+                                  )}
+                                  onCheckedChange={(
+                                    checked: boolean | string,
+                                  ) => {
+                                    if (checked === true) {
+                                      setSelectedIntegrantes([
+                                        ...selectedIntegrantes,
+                                        String(socio.id),
+                                      ]);
+                                    } else {
+                                      setSelectedIntegrantes(
+                                        selectedIntegrantes.filter(
+                                          (id) => id !== String(socio.id),
+                                        ),
+                                      );
+                                    }
+                                  }}
+                                />
+                                <label
+                                  htmlFor={`int-${socio.id}`}
+                                  className="text-sm cursor-pointer"
+                                >
+                                  {socio.apellido}, {socio.nombre} (
+                                  {getCategoriaLabel(socio.categoria)})
+                                </label>
+                              </div>
+                            ))}
+                          {personasDisponiblesParaGrupo.length === 0 && (
+                            <p className="text-sm text-gray-500">
+                              No hay personas disponibles para agregar.
+                            </p>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Total grupo:{" "}
+                          {1 +
+                            selectedIntegrantes.filter(
+                              (id) => id !== selectedResponsable,
+                            ).length}{" "}
+                          (Mínimo requerido: 3, Máximo: 8)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsGrupoDialogOpen(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleSaveGrupo}>
+                        {editingGrupo ? "Guardar Cambios" : "Crear Grupo"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {/* Lista de Grupos */}
+              <div className="space-y-4">
+                {gruposFamiliares.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8 border rounded-lg bg-gray-50">
+                    No hay grupos familiares registrados.
+                  </div>
+                ) : (
+                  gruposFamiliares.map((grupo) => {
+                    const totalIntegrantes =
+                      grupo.integrantes.length +
+                      (grupo.integrantes.find(
+                        (i) => i.id === grupo.responsable.id,
+                      )
+                        ? 0
+                        : 1);
+                    return (
+                      <Card key={grupo.id} className="overflow-hidden">
+                        <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
+                          <div>
+                            <h3 className="font-bold text-lg text-gray-800">
+                              {grupo.nombre}
+                            </h3>
+                            <p className="text-sm text-gray-600">
+                              Responsable: {grupo.responsable.nombre}{" "}
+                              {grupo.responsable.apellido}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <Badge variant="secondary">
+                              {totalIntegrantes} integrantes
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setExpandedGrupoId(
+                                  expandedGrupoId === String(grupo.id)
+                                    ? null
+                                    : String(grupo.id),
+                                )
+                              }
+                            >
+                              {expandedGrupoId === String(grupo.id)
+                                ? "Ocultar"
+                                : "Ver más"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {expandedGrupoId === String(grupo.id) && (
+                          <div className="p-4 bg-white">
+                            <div className="flex justify-end gap-2 mb-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenGrupoDialog(grupo)}
+                              >
+                                <Edit className="w-4 h-4 mr-2" /> Editar Grupo
+                              </Button>
+                              {userRole === "admin" && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleDeleteGrupo(Number(grupo.id))
+                                  }
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                                  Grupo
+                                </Button>
+                              )}
+                            </div>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Rol</TableHead>
+                                  <TableHead>Nombre</TableHead>
+                                  <TableHead>Apellido</TableHead>
+                                  <TableHead>DNI</TableHead>
+                                  <TableHead>Categoría</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                <TableRow className="bg-green-50">
+                                  <TableCell className="font-bold text-green-700">
+                                    Responsable
+                                  </TableCell>
+                                  <TableCell>
+                                    {grupo.responsable.nombre}
+                                  </TableCell>
+                                  <TableCell>
+                                    {grupo.responsable.apellido}
+                                  </TableCell>
+                                  <TableCell>{grupo.responsable.dni}</TableCell>
+                                  <TableCell>
+                                    {getCategoriaLabel(
+                                      grupo.responsable.categoria,
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                                {grupo.integrantes
+                                  .filter((i) => i.id !== grupo.responsable.id)
+                                  .map((integrante) => (
+                                    <TableRow key={integrante.id}>
+                                      <TableCell className="text-gray-500">
+                                        Integrante
+                                      </TableCell>
+                                      <TableCell>{integrante.nombre}</TableCell>
+                                      <TableCell>
+                                        {integrante.apellido}
+                                      </TableCell>
+                                      <TableCell>{integrante.dni}</TableCell>
+                                      <TableCell>
+                                        {getCategoriaLabel(
+                                          integrante.categoria,
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })
+                )}
               </div>
             </TabsContent>
           </Tabs>
