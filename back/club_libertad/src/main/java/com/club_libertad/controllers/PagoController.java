@@ -1,14 +1,15 @@
 package com.club_libertad.controllers;
 
+import com.club_libertad.dtos.IngresoPorSocioDTO;
+import com.club_libertad.dtos.IngresosPorDeporteDTO;
 import com.club_libertad.dtos.PagoDTO;
+import com.club_libertad.models.Cuota;
 import com.club_libertad.models.Pago;
 import com.club_libertad.services.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.club_libertad.dtos.IngresoPorSocioDTO;
-import io.swagger.v3.oas.annotations.Operation;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -56,7 +57,7 @@ public class PagoController {
         return response;
     }
 
-        @GetMapping("/pagos/ingresos-por-socio")
+    @GetMapping("/pagos/ingresos-por-socio")
     @Operation(summary = "Obtiene resumen de ingresos agrupado por socio")
     public ResponseEntity<List<IngresoPorSocioDTO>> getIngresosPorSocio() {
         List<IngresoPorSocioDTO> ingresos = pagoService.getIngresosPorSocio();
@@ -65,6 +66,7 @@ public class PagoController {
         }
         return ResponseEntity.ok(ingresos);
     }
+
     @GetMapping("/pagos/filtro")
     @Operation(summary = "Obtiene listado de pagos por fecha o rango de fechas")
     public ResponseEntity<List<Pago>> getPagosPorFecha(
@@ -89,5 +91,34 @@ public class PagoController {
         Map<String, Object> resumen = pagoService.getResumenIngresos(fecha, fechaDesde, fechaHasta);
         return ResponseEntity.ok(resumen);
     }
+
+    @GetMapping("/pagos/ingresos-por-deporte")
+    @Operation(summary = "Obtiene ingresos agregados por deporte filtrados por fecha o rango")
+    public ResponseEntity<List<IngresosPorDeporteDTO>> getIngresosPorDeporte(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
+            @RequestParam(required = false) Long deporteId) {
+        
+        List<IngresosPorDeporteDTO> ingresos = pagoService.getIngresosPorDeporte(fecha, fechaDesde, fechaHasta, deporteId);
+        if (ingresos == null || ingresos.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(ingresos);
+    }
+
+    @GetMapping("/pagos/cuotas-cobradas")
+    @Operation(summary = "Obtiene listado de cuotas cobradas filtradas por fecha y deporte")
+    public ResponseEntity<List<Cuota>> getCuotasCobradas(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
+            @RequestParam(required = false) Long deporteId) {
+        
+        List<Cuota> cuotas = pagoService.getCuotasCobradasPorFechaYDeporte(fecha, fechaDesde, fechaHasta, deporteId);
+        if (cuotas == null || cuotas.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(cuotas);
+    }
 }
-    
