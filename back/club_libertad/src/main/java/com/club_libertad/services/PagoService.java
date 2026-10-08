@@ -1,5 +1,7 @@
 package com.club_libertad.services;
 
+import com.club_libertad.dtos.IngresoPorSocioDTO;
+import com.club_libertad.dtos.IngresosPorDeporteDTO;
 import com.club_libertad.dtos.PagoDTO;
 import com.club_libertad.enums.EstadoCuota;
 import com.club_libertad.models.Cuota;
@@ -9,7 +11,6 @@ import com.club_libertad.repositories.CuotaRepository;
 import com.club_libertad.repositories.PagoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.club_libertad.dtos.IngresoPorSocioDTO;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -87,12 +88,10 @@ public class PagoService {
         return Optional.of(pagoCreated.getId());
     }
 
-        @Transactional(readOnly = true)
-    public List<com.club_libertad.dtos.IngresoPorSocioDTO> getIngresosPorSocio() {
+    @Transactional(readOnly = true)
+    public List<IngresoPorSocioDTO> getIngresosPorSocio() {
         return pagoRepository.findIngresosPorSocio();
     }
-
-
 
     @Transactional(readOnly = true)
     public List<Pago> getPagosPorFechaORango(LocalDate fecha, LocalDate fechaDesde, LocalDate fechaHasta) {
@@ -135,5 +134,21 @@ public class PagoService {
         resumen.put("fechaHasta", fechaHasta);
 
         return resumen;
+    }
+
+    @Transactional(readOnly = true)
+    public List<IngresosPorDeporteDTO> getIngresosPorDeporte(LocalDate fecha, LocalDate fechaDesde, LocalDate fechaHasta, Long deporteId) {
+        if (fecha != null) {
+            return cuotaRepository.findIngresosPorDeporte(fecha, null, null, deporteId);
+        }
+        return cuotaRepository.findIngresosPorDeporte(null, fechaDesde, fechaHasta, deporteId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Cuota> getCuotasCobradasPorFechaYDeporte(LocalDate fecha, LocalDate fechaDesde, LocalDate fechaHasta, Long deporteId) {
+        if (fecha != null) {
+            return cuotaRepository.findCuotasCobradasPorFechaYDeporte(fecha, null, null, deporteId);
+        }
+        return cuotaRepository.findCuotasCobradasPorFechaYDeporte(null, fechaDesde, fechaHasta, deporteId);
     }
 }

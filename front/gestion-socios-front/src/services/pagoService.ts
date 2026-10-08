@@ -6,6 +6,8 @@ const PAGO_ENDPOINTS = {
   GET_INGRESOS_POR_SOCIO: '/pagos/ingresos-por-socio', 
   FILTRO: '/pagos/filtro',
   RESUMEN: '/pagos/resumen-ingresos',
+  INGRESOS_POR_DEPORTE: '/pagos/ingresos-por-deporte',
+  CUOTAS_COBRADAS: '/pagos/cuotas-cobradas',
 };
 
 export interface CrearPagoPayload {
@@ -33,6 +35,17 @@ export interface FiltroFechaParams {
   fecha?: string;      // Formato: YYYY-MM-DD
   fechaDesde?: string; // Formato: YYYY-MM-DD
   fechaHasta?: string; // Formato: YYYY-MM-DD
+  deporteId?: number | string;
+}
+
+export interface IngresosPorDeporteDTO {
+  deporteId: number;
+  nombreDeporte: string;
+  cantidadCuotasCobradas: number;
+  totalSocial: number;
+  totalEntrenador: number;
+  totalSeguro: number;
+  montoTotal: number;
 }
 
 export interface Pago {
@@ -72,14 +85,12 @@ const pagoService = {
       throw error;
     });
   },
-
-    getIngresosPorSocio() {
+  getIngresosPorSocio() {
     return api.get<IngresoPorSocioDTO[]>(PAGO_ENDPOINTS.GET_INGRESOS_POR_SOCIO).catch(error => {
       console.error('Error al obtener ingresos por socio:', error);
       throw error;
     });
   },
-  
   getByFechaORango(params: FiltroFechaParams) {
     const query = new URLSearchParams();
     if (params.fecha && params.fecha.trim() !== '') {
@@ -111,6 +122,46 @@ const pagoService = {
     const url = query.toString() ? `${PAGO_ENDPOINTS.RESUMEN}?${query.toString()}` : PAGO_ENDPOINTS.RESUMEN;
     return api.get<ResumenIngresos>(url).catch(error => {
       console.warn('Aviso al obtener resumen de ingresos del backend:', error);
+      throw error;
+    });
+  },
+  getIngresosPorDeporte(params: FiltroFechaParams) {
+    const query = new URLSearchParams();
+    if (params.fecha && params.fecha.trim() !== '') {
+      query.append('fecha', params.fecha.trim());
+    }
+    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
+      query.append('fechaDesde', params.fechaDesde.trim());
+    }
+    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
+      query.append('fechaHasta', params.fechaHasta.trim());
+    }
+    if (params.deporteId !== undefined && params.deporteId !== null && params.deporteId !== '' && params.deporteId !== 'all') {
+      query.append('deporteId', String(params.deporteId));
+    }
+    const url = query.toString() ? `${PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE}?${query.toString()}` : PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE;
+    return api.get<IngresosPorDeporteDTO[]>(url).catch(error => {
+      console.warn('Aviso al obtener ingresos por deporte del backend:', error);
+      throw error;
+    });
+  },
+  getCuotasCobradas(params: FiltroFechaParams) {
+    const query = new URLSearchParams();
+    if (params.fecha && params.fecha.trim() !== '') {
+      query.append('fecha', params.fecha.trim());
+    }
+    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
+      query.append('fechaDesde', params.fechaDesde.trim());
+    }
+    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
+      query.append('fechaHasta', params.fechaHasta.trim());
+    }
+    if (params.deporteId !== undefined && params.deporteId !== null && params.deporteId !== '' && params.deporteId !== 'all') {
+      query.append('deporteId', String(params.deporteId));
+    }
+    const url = query.toString() ? `${PAGO_ENDPOINTS.CUOTAS_COBRADAS}?${query.toString()}` : PAGO_ENDPOINTS.CUOTAS_COBRADAS;
+    return api.get<any[]>(url).catch(error => {
+      console.warn('Aviso al obtener cuotas cobradas del backend:', error);
       throw error;
     });
   },
