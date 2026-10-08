@@ -1,66 +1,3 @@
-<<<<<<< Updated upstream
-import { useEffect, useState, useCallback } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
-import { Badge } from "./ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import {
-  Plus,
-  Download,
-  FileText,
-  DollarSign,
-  TrendingUp,
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
-  Calendar,
-  Search,
-} from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { toast } from "sonner@2.0.3";
-import cuotaService from "../services/cuotaService";
-import pagoService, {
-  type IngresoPorSocioDTO,
-  type FiltroFechaParams,
-  type ResumenIngresos,
-} from "../services/pagoService";
-import personaService from "../services/personaService";
-import deporteService from "../services/deporteService";
-import type { Cuota } from "../types/cuota";
-import type { Persona } from "../types/persona";
-import type { Deporte } from "../types/deporte";
-import { Checkbox } from "./ui/checkbox";
-=======
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -86,7 +23,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 
 const normalizarBusquedaDeporte = (texto: string) =>
   texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
->>>>>>> Stashed changes
+
 
 interface Pago {
   id: string;
@@ -138,12 +75,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     "dia",
   );
   const [fechaFiltro, setFechaFiltro] = useState<string>(getFechaHoy());
-<<<<<<< Updated upstream
-  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>("");
-  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>("");
-  const [resumenIngresos, setResumenIngresos] =
-    useState<ResumenIngresos | null>(null);
-=======
+
   const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>('');
   const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>('');
   const [filterDeporteIngreso, setFilterDeporteIngreso] = useState<string>('all');
@@ -171,7 +103,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   };
   const [ingresosPorDeporte, setIngresosPorDeporte] = useState<IngresosPorDeporteDTO[]>([]);
   const [resumenIngresos, setResumenIngresos] = useState<ResumenIngresos | null>(null);
->>>>>>> Stashed changes
+
   const [pagosFiltrados, setPagosFiltrados] = useState<any[]>([]);
   const [cargandoReporte, setCargandoReporte] = useState<boolean>(false);
 
@@ -204,18 +136,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       await cuotaService.actualizarCuotasVencidas();
       await cuotaService.generarCuotasMesActual();
 
-<<<<<<< Updated upstream
+
       // Luego cargar todas las cuotas, personas, deportes e ingresos por socio en paralelo
-      const [
-        cuotasRes,
-        personasRes,
-        deportesRes,
-        pagosRes,
-        ingresosPorSocioRes,
-      ] = await Promise.all([
-=======
+
       const [cuotasRes, personasRes, deportesRes, pagosRes, ingresosPorSocioRes] = await Promise.all([
->>>>>>> Stashed changes
+
         cuotaService.getAll(),
         personaService.getAll(),
         deporteService.getAll(),
@@ -481,70 +406,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return true;
     };
 
-<<<<<<< Updated upstream
-    if (Array.isArray(pagosServidor) && pagosServidor.length > 0) {
-      const filtrados = pagosServidor.filter((p) => coincide(p.fechaPago));
-      const totalRecaudado = filtrados.reduce(
-        (sum, p) => sum + (Number(p.montoTotal) || 0),
-        0,
-      );
-      const totalEntrenador = filtrados.reduce(
-        (sum, p) => sum + (Number(p.cuotaEntrenador) || 0),
-        0,
-      );
-      const totalSeguro = filtrados.reduce(
-        (sum, p) => sum + (Number(p.cuotaSeguro) || 0),
-        0,
-      );
-      const totalSocial = filtrados.reduce(
-        (sum, p) => sum + (Number(p.cuotaSocial) || 0),
-        0,
-      );
-=======
     const pagosDelDia = (Array.isArray(pagosServidor) ? pagosServidor : []).filter(p => coincide(p.fechaPago));
->>>>>>> Stashed changes
 
     if (filterDeporteIngreso !== 'all') {
       const pagosDelDeporte = pagosDelDia.filter(p => {
         const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(p.id));
         return cuotasDePago.some(c => String(c.deporteId) === filterDeporteIngreso);
       });
-<<<<<<< Updated upstream
-      setPagosFiltrados(filtrados);
-      toast.success(`Se encontraron ${filtrados.length} ingresos`);
-    } else {
-      const cuotasPagadas = cuotas.filter(
-        (c) => c.estado === "PAGADA" && coincide(c.fechaGeneracion),
-      );
-      const total = cuotasPagadas.reduce(
-        (sum, c) => sum + (Number(c.monto) || 0),
-        0,
-      );
-      const totalEntrenador = cuotasPagadas.reduce(
-        (sum, c) => sum + (Number(c.cuotaEntrenador) || 0),
-        0,
-      );
-      const totalSeguro = cuotasPagadas.reduce(
-        (sum, c) => sum + (Number(c.cuotaSeguro) || 0),
-        0,
-      );
-      const totalSocial = cuotasPagadas.reduce(
-        (sum, c) => sum + (Number(c.cuotaSocial) || 0),
-        0,
-      );
-
-      const adaptados = cuotasPagadas.map((c, idx) => ({
-        id: c.pagoId || c.id || idx,
-        socioId: c.personaId,
-        fechaPago: c.fechaGeneracion,
-        montoTotal: c.monto,
-        cuotaEntrenador: c.cuotaEntrenador || 0,
-        cuotaSeguro: c.cuotaSeguro || 0,
-        cuotaSocial: c.cuotaSocial || 0,
-        metodoPago: "TRANSFERENCIA",
-        observaciones: c.concepto || "Cobro de cuota",
-      }));
-=======
 
       const cuotasDelDeporte = cuotas.filter(c =>
         String(c.deporteId) === filterDeporteIngreso &&
@@ -564,7 +432,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       const totalSeguro = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSeguro) || 0), 0);
       const totalSocial = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSocial) || 0), 0);
       const dep = deportes.find(d => String(d.id) === filterDeporteIngreso);
->>>>>>> Stashed changes
 
       setResumenIngresos({
         cantidadIngresos: cuotasDelDeporte.length,
@@ -586,16 +453,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       toast.success(`Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`);
       return;
     }
-<<<<<<< Updated upstream
-  }, [
-    modoFiltroFecha,
-    fechaFiltro,
-    fechaDesdeFiltro,
-    fechaHastaFiltro,
-    pagosServidor,
-    cuotas,
-  ]);
-=======
 
     if (pagosDelDia.length > 0) {
       const totalRecaudado = pagosDelDia.reduce((sum, p) => sum + (Number(p.montoTotal) || 0), 0);
@@ -645,7 +502,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       setIngresosPorDeporte([]);
     }
   }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, filterDeporteIngreso, pagosServidor, cuotas, deportes]);
->>>>>>> Stashed changes
 
   const consultarIngresosPorFecha = useCallback(async () => {
     setCargandoReporte(true);
@@ -677,15 +533,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         pagoService.getIngresosPorDeporte(params),
       ]);
 
-<<<<<<< Updated upstream
-      if (resumenRes?.data && listadoRes?.data) {
-        const lista = Array.isArray(listadoRes.data) ? listadoRes.data : [];
-        setResumenIngresos(resumenRes.data);
-        setPagosFiltrados(lista);
-        toast.success(
-          `Se encontraron ${resumenRes.data.cantidadIngresos ?? lista.length} ingresos`,
-        );
-=======
       const listaPagos = Array.isArray(listadoRes?.data) ? listadoRes.data : [];
 
       if (filterDeporteIngreso !== 'all') {
@@ -731,7 +578,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           montoTotal: total,
         }]);
         toast.success(`Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`);
->>>>>>> Stashed changes
       } else {
         const listaDeportes = Array.isArray(deporteRes?.data) ? deporteRes.data : [];
         setIngresosPorDeporte(listaDeportes);
@@ -744,17 +590,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     } finally {
       setCargandoReporte(false);
     }
-<<<<<<< Updated upstream
-  }, [
-    modoFiltroFecha,
-    fechaFiltro,
-    fechaDesdeFiltro,
-    fechaHastaFiltro,
-    ejecutarFiltroLocal,
-  ]);
-=======
   }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, filterDeporteIngreso, cuotas, deportes, ejecutarFiltroLocal]);
->>>>>>> Stashed changes
 
   const generarReporte = (tipo: "ingresos" | "deudas") => {
     if (tipo === "ingresos") {
@@ -1291,7 +1127,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </TableHeader>
                   <TableBody>
                     {Array.isArray(pagosServidor) &&
-                    pagosServidor.length > 0 ? (
+                      pagosServidor.length > 0 ? (
                       pagosServidor
                         .filter((pago: any) => {
                           const matchesDeporte = (() => {
@@ -1389,39 +1225,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
                           return (
                             <>
-<<<<<<< Updated upstream
-                              <TableRow
-                                key={pago.id}
-                                className="cursor-pointer hover:bg-gray-50"
-                                onClick={() =>
-                                  togglePagoExpanded(String(pago.id))
-                                }
-                              >
-                                <TableCell>
-                                  {hasConceptos ? (
-                                    isExpanded ? (
-                                      <ChevronDown className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronRight className="w-4 h-4" />
-                                    )
-                                  ) : null}
-                                </TableCell>
-                                <TableCell>
-                                  {socio
-                                    ? `${socio.nombre} ${socio.apellido}`
-                                    : "—"}
-                                </TableCell>
-                                <TableCell>{socio?.dni || "—"}</TableCell>
-                                <TableCell>{deportesNombres || "—"}</TableCell>
-                                <TableCell>
-                                  ${(pago.montoTotal || 0).toLocaleString()}
-                                </TableCell>
-                                <TableCell>
-                                  {formatearFechaDisplay(pago.fechaPago)}
-                                </TableCell>
-                                <TableCell>
-                                  {pago.observaciones || "—"}
-=======
                               <TableRow key={pago.id} className="cursor-pointer hover:bg-gray-50" onClick={() => togglePagoExpanded(String(pago.id))}>
                                 <TableCell>
                                   {hasConceptos ? (
@@ -1437,107 +1240,39 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               </TableRow>
                               {isExpanded && hasConceptos && (
                                 <TableRow key={`${pago.id}-desglose`} className="bg-gray-50">
-                                <TableCell colSpan={7} className="py-3 px-6">
-                                  <div className="space-y-2">
-                                    <p className="text-sm font-semibold text-gray-700">Desglose de conceptos:</p>
-                                    <div className="space-y-3">
-                                      {desgloseArray.map((d, idx) => (
-                                        <div key={`${pago.id}-dep-${idx}`} className="rounded border bg-white p-3">
-                                          <div className="font-medium text-gray-700 mb-2">{d.nombre}</div>
-                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                            {d.entrenador > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Entrenador:</span>
-                                                <span className="font-semibold">${d.entrenador.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                            {d.seguro > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Seguro:</span>
-                                                <span className="font-semibold">${d.seguro.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                            {d.social > 0 && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-600">Social:</span>
-                                                <span className="font-semibold">${d.social.toLocaleString()}</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {pago.montoTotal !== (pago.cuotaEntrenador + pago.cuotaSeguro + pago.cuotaSocial) && (
-                                      <p className="text-xs text-gray-500 mt-2">
-                                        * El monto total puede diferir de la suma por promociones aplicadas
-                                      </p>
-                                    )}
-                                  </div>
->>>>>>> Stashed changes
-                                </TableCell>
-                              </TableRow>
-                              {isExpanded && hasConceptos && (
-                                <TableRow
-                                  key={`${pago.id}-desglose`}
-                                  className="bg-gray-50"
-                                >
                                   <TableCell colSpan={7} className="py-3 px-6">
                                     <div className="space-y-2">
-                                      <p className="text-sm font-semibold text-gray-700">
-                                        Desglose de conceptos:
-                                      </p>
+                                      <p className="text-sm font-semibold text-gray-700">Desglose de conceptos:</p>
                                       <div className="space-y-3">
                                         {desgloseArray.map((d, idx) => (
-                                          <div
-                                            key={`${pago.id}-dep-${idx}`}
-                                            className="rounded border bg-white p-3"
-                                          >
-                                            <div className="font-medium text-gray-700 mb-2">
-                                              {d.nombre}
-                                            </div>
+                                          <div key={`${pago.id}-dep-${idx}`} className="rounded border bg-white p-3">
+                                            <div className="font-medium text-gray-700 mb-2">{d.nombre}</div>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                                               {d.entrenador > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">
-                                                    Entrenador:
-                                                  </span>
-                                                  <span className="font-semibold">
-                                                    $
-                                                    {d.entrenador.toLocaleString()}
-                                                  </span>
+                                                  <span className="text-gray-600">Entrenador:</span>
+                                                  <span className="font-semibold">${d.entrenador.toLocaleString()}</span>
                                                 </div>
                                               )}
                                               {d.seguro > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">
-                                                    Seguro:
-                                                  </span>
-                                                  <span className="font-semibold">
-                                                    ${d.seguro.toLocaleString()}
-                                                  </span>
+                                                  <span className="text-gray-600">Seguro:</span>
+                                                  <span className="font-semibold">${d.seguro.toLocaleString()}</span>
                                                 </div>
                                               )}
                                               {d.social > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">
-                                                    Social:
-                                                  </span>
-                                                  <span className="font-semibold">
-                                                    ${d.social.toLocaleString()}
-                                                  </span>
+                                                  <span className="text-gray-600">Social:</span>
+                                                  <span className="font-semibold">${d.social.toLocaleString()}</span>
                                                 </div>
                                               )}
                                             </div>
                                           </div>
                                         ))}
                                       </div>
-                                      {pago.montoTotal !==
-                                        pago.cuotaEntrenador +
-                                          pago.cuotaSeguro +
-                                          pago.cuotaSocial && (
+                                      {pago.montoTotal !== (pago.cuotaEntrenador + pago.cuotaSeguro + pago.cuotaSocial) && (
                                         <p className="text-xs text-gray-500 mt-2">
-                                          * El monto total puede diferir de la
-                                          suma por promociones aplicadas
+                                          * El monto total puede diferir de la suma por promociones aplicadas
                                         </p>
                                       )}
                                     </div>
@@ -1614,8 +1349,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <TableCell>
                                 {item.ultimoPago
                                   ? new Date(
-                                      item.ultimoPago,
-                                    ).toLocaleDateString("es-ES")
+                                    item.ultimoPago,
+                                  ).toLocaleDateString("es-ES")
                                   : "-"}
                               </TableCell>
                             </TableRow>
@@ -1636,27 +1371,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </CardContent>
               </Card>
             </TabsContent>
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
             {/* Listado y Reporte por Fecha o Rango */}
             <TabsContent value="ingresos-fecha" className="space-y-4">
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-<<<<<<< Updated upstream
-                    <h3 className="font-semibold text-base">
-                      Consulta de Ingresos por Fecha o Período
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      Consulta cuántos ingresos hubo y el total recaudado en una
-                      fecha fija o rango.
-                    </p>
-=======
                     <h3 className="font-semibold text-base">Consulta de Ingresos por Fecha o Período</h3>
                     <p className="text-sm text-gray-500">Consulta cuánto dinero ingresó por disciplina en un día puntual o rango temporal.</p>
->>>>>>> Stashed changes
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1682,21 +1404,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </div>
                 </div>
 
-<<<<<<< Updated upstream
-                <div className="flex flex-wrap items-end gap-3 pt-2">
-                  {modoFiltroFecha === "dia" ? (
-                    <div className="space-y-1">
-                      <Label htmlFor="filtro-fecha-dia">
-                        Fecha del ingreso
-                      </Label>
-                      <Input
-                        id="filtro-fecha-dia"
-                        type="date"
-                        value={fechaFiltro}
-                        onChange={(e) => setFechaFiltro(e.target.value)}
-                        className="w-48"
-                      />
-=======
                 <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
                   <div className="flex flex-wrap items-end gap-3">
                     {modoFiltroFecha === 'dia' ? (
@@ -1778,86 +1485,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           </Command>
                         </PopoverContent>
                       </Popover>
->>>>>>> Stashed changes
                     </div>
                   </div>
 
-<<<<<<< Updated upstream
-                  <Button
-                    onClick={consultarIngresosPorFecha}
-                    disabled={cargandoReporte}
-                    className="gap-2"
-                  >
-                    <Search className="w-4 h-4" />
-                    {cargandoReporte ? "Consultando..." : "Buscar Ingresos"}
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setModoFiltroFecha("dia");
-                      setFechaFiltro(getFechaHoy());
-                      setFechaDesdeFiltro("");
-                      setFechaHastaFiltro("");
-                      setResumenIngresos(null);
-                      setPagosFiltrados([]);
-                    }}
-                  >
-                    Limpiar / Hoy
-                  </Button>
-                </div>
-              </div>
-
-              {resumenIngresos && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                  <Card className="bg-blue-50 border-blue-200">
-                    <CardHeader className="pb-2">
-                      <CardDescription>Cantidad de Ingresos</CardDescription>
-                      <CardTitle className="text-2xl font-bold text-blue-700">
-                        {resumenIngresos.cantidadIngresos}{" "}
-                        {resumenIngresos.cantidadIngresos === 1
-                          ? "cobro"
-                          : "cobros"}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                  <Card className="bg-green-50 border-green-200">
-                    <CardHeader className="pb-2">
-                      <CardDescription>Monto Total Recaudado</CardDescription>
-                      <CardTitle className="text-2xl font-bold text-green-700">
-                        ${(resumenIngresos.montoTotal || 0).toLocaleString()}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardDescription>Cuota Social</CardDescription>
-                      <CardTitle className="text-xl font-semibold">
-                        ${(resumenIngresos.totalSocial || 0).toLocaleString()}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardDescription>Cuota Entrenador</CardDescription>
-                      <CardTitle className="text-xl font-semibold">
-                        $
-                        {(
-                          resumenIngresos.totalEntrenador || 0
-                        ).toLocaleString()}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardDescription>Cuota Seguro</CardDescription>
-                      <CardTitle className="text-xl font-semibold">
-                        ${(resumenIngresos.totalSeguro || 0).toLocaleString()}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                </div>
-=======
                   <div className="flex items-center gap-2 shrink-0">
                     <Button onClick={consultarIngresosPorFecha} disabled={cargandoReporte} className="gap-2">
                       <Search className="w-4 h-4" />
@@ -1950,7 +1580,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </div>
                   </CardContent>
                 </Card>
->>>>>>> Stashed changes
               )}
 
               <div className="border rounded-lg overflow-x-auto">
