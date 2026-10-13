@@ -1,5 +1,6 @@
 package com.club_libertad.services;
 
+import com.club_libertad.dtos.PersonaAsambleaDTO;
 import com.club_libertad.dtos.PersonaDTO;
 import com.club_libertad.exceptions.RegistroDuplicadoException;
 import com.club_libertad.models.Deporte;
@@ -11,6 +12,7 @@ import com.club_libertad.models.Promocion;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +46,12 @@ public class PersonaService {
     @Transactional(readOnly = true)
     public List<Persona> getAllPersonas(){
         return personaRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PersonaAsambleaDTO> getPersonasParaAsamblea() {
+        LocalDate fechaMinima = LocalDate.now().minusYears(18);
+        return personaRepository.findPersonasParaAsamblea(fechaMinima);
     }
 
     @Transactional(readOnly = true)
