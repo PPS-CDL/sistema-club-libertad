@@ -9,12 +9,13 @@ import java.time.LocalDate;
 
 @Service
 public class ConfiguracionClubService {
-
     private final ConfiguracionClubRepository configuracionRepository;
-    
+    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
 
-    public ConfiguracionClubService(ConfiguracionClubRepository configuracionRepository) {
+    public ConfiguracionClubService(ConfiguracionClubRepository configuracionRepository, 
+                                    com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository) {
         this.configuracionRepository = configuracionRepository;
+        this.cuotaSocialRepository = cuotaSocialRepository;
     }
 
     @Transactional(readOnly = true)
@@ -58,11 +59,14 @@ public class ConfiguracionClubService {
         if (nuevaFecha != null && !nuevaFecha.equals(fechaActual)) {
             LocalDate hoy = LocalDate.now();
 
-            // Bloqueo de modificación si la fecha actual ya se alcanzó (o se superó)
+            // Regla: Bloqueo de modificación si la fecha actual ya se alcanzó (o se superó)
             if (fechaActual != null && !hoy.isBefore(fechaActual)) {
                 throw new IllegalStateException("La fecha efectiva ya se alcanzó y no puede ser modificada.");
             }
-
+            // Regla: Bloqueo si CuotaSocialRepository.count() > 0
+            if (cuotaSocialRepository.count() > 0) {
+                throw new IllegalStateException("No se puede modificar la fecha efectiva porque el sistema ya ha generado cuotas sociales independientes.");
+            }
            
             // Debe ser el primer día de un mes
             if (nuevaFecha.getDayOfMonth() != 1) {
@@ -76,7 +80,6 @@ public class ConfiguracionClubService {
 
             config.setFechaEfectiva(nuevaFecha);
         }
-
         return configuracionRepository.save(config);
     }
 }
