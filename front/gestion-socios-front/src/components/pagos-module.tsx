@@ -112,7 +112,7 @@ interface Pago {
   monto: number;
   fecha: string;
   mes: string;
-  metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
+  metodoPago: string;
   estado: "pagado" | "pendiente" | "vencido";
   conceptos: {
     concepto: string;
@@ -286,10 +286,12 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       const deportesData = Array.isArray(deportesRes.data)
         ? deportesRes.data
         : [];
+      const pagosData = Array.isArray(pagosRes.data) ? pagosRes.data : [];
+
       setCuotas(cuotasData);
       setPersonas(personasData);
       setDeportes(deportesData);
-      setPagosServidor(Array.isArray(pagosRes.data) ? pagosRes.data : []);
+      setPagosServidor(pagosData);
       setIngresosPorSocio(
         Array.isArray(ingresosPorSocioRes.data) ? ingresosPorSocioRes.data : [],
       );
@@ -300,18 +302,50 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       const deporteMap = new Map<number, Deporte>(
         deportesData.map((d) => [Number(d.id), d] as const),
       );
+      const pagoMap = new Map<number, any>(
+        pagosData.map((p: any) => [Number(p.id), p]),
+      );
 
       const pagosTransformados = cuotasData.map((cuota, idx) => {
-        const p = personaMap.get(Number(cuota.personaId));
-        const d = deporteMap.get(Number(cuota.deporteId));
+        const personaIdNum = Number(
+          typeof cuota.personaId === "object" && cuota.personaId !== null
+            ? (cuota.personaId as any).id
+            : cuota.personaId,
+        );
+        const deporteIdNum = Number(
+          typeof cuota.deporteId === "object" && cuota.deporteId !== null
+            ? (cuota.deporteId as any).id
+            : cuota.deporteId,
+        );
+        const pagoIdNum = cuota.pagoId
+          ? Number(
+              typeof cuota.pagoId === "object" && cuota.pagoId !== null
+                ? (cuota.pagoId as any).id
+                : cuota.pagoId,
+            )
+          : null;
+
+        const p = personaMap.get(personaIdNum);
+        const d = deporteMap.get(deporteIdNum);
+        const pagoAsociado = pagoIdNum ? pagoMap.get(pagoIdNum) : undefined;
+
+        const metodoReal =
+          cuota.estado === "PAGADA"
+            ? pagoAsociado?.metodoPago || "TRANSFERENCIA"
+            : "—";
+        const fechaPagoReal =
+          cuota.estado === "PAGADA"
+            ? pagoAsociado?.fechaPago || cuota.fechaGeneracion || ""
+            : "";
+
         return {
           id: (cuota.id || idx).toString(),
           socio: p ? `${p.nombre} ${p.apellido}` : `Persona ${cuota.personaId}`,
           socioDNI: p?.dni || "",
           monto: cuota.monto,
-          fecha: cuota.estado === "PAGADA" ? cuota.fechaGeneracion : "",
+          fecha: fechaPagoReal,
           mes: getMesAno(cuota.periodo),
-          metodoPago: "TRANSFERENCIA" as const,
+          metodoPago: metodoReal,
           estado:
             cuota.estado === "PAGADA"
               ? "pagado"
@@ -1040,13 +1074,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     return variants[estado as keyof typeof variants] || "default";
   };
 
-  const getMetodoPagoLabel = (metodo: string) => {
-    const labels = {
+  const getMetodoPagoLabel = (metodo?: string) => {
+    if (!metodo || metodo === "—") return "—";
+    const labels: Record<string, string> = {
       EFECTIVO: "Efectivo",
       TRANSFERENCIA: "Transferencia",
       DEBITO_AUTOMATICO: "Débito Automático",
     };
-    return labels[metodo as keyof typeof labels] || metodo;
+    return labels[metodo] || metodo;
   };
 
   const togglePagoExpanded = (pagoId: string) => {
@@ -1427,9 +1462,15 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <span>${pago.monto.toLocaleString()}</span>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">
-                                {getMetodoPagoLabel(pago.metodoPago)}
-                              </Badge>
+                              {pago.estado === "pagado" &&
+                              pago.metodoPago &&
+                              pago.metodoPago !== "—" ? (
+                                <Badge variant="outline">
+                                  {getMetodoPagoLabel(pago.metodoPago)}
+                                </Badge>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               {pago.fecha
