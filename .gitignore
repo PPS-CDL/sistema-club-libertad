@@ -50,3 +50,6 @@ application*.yml.local
 /lib/
 # Archivos de sistema operativo
 .DS_StoreThumbs.db
+# Scripts locales de base de datos (seeder y limpiador)
+**/config/DevDataSeeder.java
+**/config/DatabaseCleaner.java

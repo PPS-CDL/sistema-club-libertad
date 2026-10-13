@@ -2,6 +2,7 @@ package com.club_libertad.controllers;
 
 import com.club_libertad.dtos.IngresoPorSocioDTO;
 import com.club_libertad.dtos.IngresosPorDeporteDTO;
+import com.club_libertad.dtos.ResumenMensualPorDeporteDTO;
 import com.club_libertad.dtos.PagoDTO;
 import com.club_libertad.models.Cuota;
 import com.club_libertad.models.Pago;
@@ -120,5 +121,19 @@ public class PagoController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.ok(cuotas);
+    }
+
+    @GetMapping("/pagos/resumen-mensual")
+    @Operation(summary = "Obtiene resumen mensual devengado por deporte (al dia vs deudores)")
+    public ResponseEntity<List<ResumenMensualPorDeporteDTO>> getResumenMensual(
+            @RequestParam int anio,
+            @RequestParam int mes,
+            @RequestParam(required = false) Long deporteId) {
+        
+        List<ResumenMensualPorDeporteDTO> resumen = pagoService.getResumenMensualPorDeporte(anio, mes, deporteId);
+        if (resumen == null || resumen.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(resumen);
     }
 }
