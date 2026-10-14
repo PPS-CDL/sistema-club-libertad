@@ -1,29 +1,109 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Download, FileText, DollarSign, TrendingUp, AlertCircle, ChevronDown, ChevronRight, Calendar, Search, ChevronsUpDown } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { toast } from 'sonner@2.0.3';
-import cuotaService from '../services/cuotaService';
-import pagoService, { type IngresoPorSocioDTO, type FiltroFechaParams, type ResumenIngresos, type IngresosPorDeporteDTO } from '../services/pagoService';
-import personaService from '../services/personaService';
-import deporteService from '../services/deporteService';
-import type { Cuota } from '../types/cuota';
-import type { Persona } from '../types/persona';
-import type { Deporte } from '../types/deporte';
-import { Checkbox } from './ui/checkbox';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { Badge } from "./ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import {
+  Plus,
+  Download,
+  FileText,
+  DollarSign,
+  TrendingUp,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Calendar,
+  Search,
+  ChevronsUpDown,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { toast } from "sonner@2.0.3";
+import cuotaService from "../services/cuotaService";
+import pagoService, {
+  type IngresoPorSocioDTO,
+  type FiltroFechaParams,
+  type ResumenIngresos,
+  type IngresosPorDeporteDTO,
+  type ResumenMensualPorDeporteDTO,
+} from "../services/pagoService";
+import personaService from "../services/personaService";
+import deporteService from "../services/deporteService";
+import type { Cuota } from "../types/cuota";
+import type { Persona } from "../types/persona";
+import type { Deporte } from "../types/deporte";
+import { Checkbox } from "./ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
 
 const normalizarBusquedaDeporte = (texto: string) =>
-  texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
+  texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .trim();
 
+const prorratearCuota = (c: any) => {
+  const socialNominal = Number(c.cuotaSocial) || 0;
+  const entrenadorNominal = Number(c.cuotaEntrenador) || 0;
+  const seguroNominal = Number(c.cuotaSeguro) || 0;
+  const montoReal = Number(c.monto) || 0;
+  const totalNominal = socialNominal + entrenadorNominal + seguroNominal;
+
+  if (totalNominal <= 0 || montoReal <= 0) {
+    return { social: 0, entrenador: 0, seguro: 0 };
+  }
+  if (totalNominal === montoReal) {
+    return {
+      social: socialNominal,
+      entrenador: entrenadorNominal,
+      seguro: seguroNominal,
+    };
+  }
+
+  const factor = montoReal / totalNominal;
+  const social = Math.round(socialNominal * factor * 100) / 100;
+  const entrenador = Math.round(entrenadorNominal * factor * 100) / 100;
+  const seguro = Math.round((montoReal - social - entrenador) * 100) / 100;
+
+  return { social, entrenador, seguro };
+};
 
 interface Pago {
   id: string;
@@ -32,7 +112,7 @@ interface Pago {
   monto: number;
   fecha: string;
   mes: string;
-  metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
+  metodoPago: string;
   estado: "pagado" | "pendiente" | "vencido";
   conceptos: {
     concepto: string;
@@ -75,58 +155,108 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     "dia",
   );
   const [fechaFiltro, setFechaFiltro] = useState<string>(getFechaHoy());
+  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>("");
+  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>("");
 
-  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState<string>('');
-  const [fechaHastaFiltro, setFechaHastaFiltro] = useState<string>('');
-  const [filterDeporteIngreso, setFilterDeporteIngreso] = useState<string>('all');
-  const [deporteIngresoAbierto, setDeporteIngresoAbierto] = useState(false);
-  const [busquedaDeporteIngreso, setBusquedaDeporteIngreso] = useState('');
-
-  const opcionesDeporteIngreso = useMemo(() => [
-    { value: 'all', label: 'Todos los deportes' },
-    ...[...deportes]
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-      .map(deporte => ({ value: String(deporte.id), label: deporte.nombre })),
-  ], [deportes]);
-
-  const busquedaDeporteNormalizada = normalizarBusquedaDeporte(busquedaDeporteIngreso);
-  const opcionesDeporteIngresoFiltradas = opcionesDeporteIngreso.filter(opcion =>
-    normalizarBusquedaDeporte(opcion.label).includes(busquedaDeporteNormalizada)
+  const opcionesDeportes = useMemo(
+    () => [
+      { value: "all", label: "Todos los deportes" },
+      ...[...deportes]
+        .sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }),
+        )
+        .map((deporte) => ({
+          value: String(deporte.id),
+          label: deporte.nombre,
+        })),
+    ],
+    [deportes],
   );
-  const nombreDeporteIngreso = opcionesDeporteIngreso.find(
-    opcion => opcion.value === filterDeporteIngreso
-  )?.label || 'Todos los deportes';
+
+  const [filterDeporteIngreso, setFilterDeporteIngreso] =
+    useState<string>("all");
+  const [deporteIngresoAbierto, setDeporteIngresoAbierto] = useState(false);
+  const [busquedaDeporteIngreso, setBusquedaDeporteIngreso] = useState("");
+
+  const busquedaDeporteIngresoNormalizada = normalizarBusquedaDeporte(
+    busquedaDeporteIngreso,
+  );
+  const opcionesDeporteIngresoFiltradas = opcionesDeportes.filter((opcion) =>
+    normalizarBusquedaDeporte(opcion.label).includes(
+      busquedaDeporteIngresoNormalizada,
+    ),
+  );
+  const nombreDeporteIngreso =
+    opcionesDeportes.find((opcion) => opcion.value === filterDeporteIngreso)
+      ?.label || "Todos los deportes";
 
   const cambiarAperturaDeporteIngreso = (abierto: boolean) => {
     setDeporteIngresoAbierto(abierto);
-    if (!abierto) setBusquedaDeporteIngreso('');
+    if (!abierto) setBusquedaDeporteIngreso("");
   };
-  const [ingresosPorDeporte, setIngresosPorDeporte] = useState<IngresosPorDeporteDTO[]>([]);
-  const [resumenIngresos, setResumenIngresos] = useState<ResumenIngresos | null>(null);
 
+  const [ingresosPorDeporte, setIngresosPorDeporte] = useState<
+    IngresosPorDeporteDTO[]
+  >([]);
+  const [resumenIngresos, setResumenIngresos] =
+    useState<ResumenIngresos | null>(null);
   const [pagosFiltrados, setPagosFiltrados] = useState<any[]>([]);
   const [cargandoReporte, setCargandoReporte] = useState<boolean>(false);
+
+  const fechaActual = new Date();
+  const [mesResumen, setMesResumen] = useState<string>(
+    String(fechaActual.getMonth() + 1),
+  );
+  const [anioResumen, setAnioResumen] = useState<string>(
+    String(fechaActual.getFullYear()),
+  );
+  const [filterDeporteResumen, setFilterDeporteResumen] =
+    useState<string>("all");
+  const [deporteResumenAbierto, setDeporteResumenAbierto] = useState(false);
+  const [busquedaDeporteResumen, setBusquedaDeporteResumen] = useState("");
+  const [resumenMensual, setResumenMensual] = useState<
+    ResumenMensualPorDeporteDTO[]
+  >([]);
+  const [cargandoResumenMensual, setCargandoResumenMensual] =
+    useState<boolean>(false);
+
+  const busquedaDeporteResumenNormalizada = normalizarBusquedaDeporte(
+    busquedaDeporteResumen,
+  );
+  const opcionesDeporteResumenFiltradas = opcionesDeportes.filter((opcion) =>
+    normalizarBusquedaDeporte(opcion.label).includes(
+      busquedaDeporteResumenNormalizada,
+    ),
+  );
+  const nombreDeporteResumen =
+    opcionesDeportes.find((opcion) => opcion.value === filterDeporteResumen)
+      ?.label || "Todos los deportes";
+
+  const cambiarAperturaDeporteResumen = (abierto: boolean) => {
+    setDeporteResumenAbierto(abierto);
+    if (!abierto) setBusquedaDeporteResumen("");
+  };
+
+  const mesesNombres = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+  ];
 
   const getMesAno = (periodo: string) => {
     const [year, month] = periodo.split("-");
     if (!year || !month) return periodo;
     const mesNum = parseInt(month, 10);
-    const meses = [
-      "",
-      "enero",
-      "febrero",
-      "marzo",
-      "abril",
-      "mayo",
-      "junio",
-      "julio",
-      "agosto",
-      "septiembre",
-      "octubre",
-      "noviembre",
-      "diciembre",
-    ];
-    return `${meses[mesNum] || "mes"} de ${year}`;
+    return `${mesesNombres[mesNum - 1] || "mes"} de ${year}`;
   };
 
   const cargarCuotas = useCallback(async () => {
@@ -136,11 +266,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       await cuotaService.actualizarCuotasVencidas();
       await cuotaService.generarCuotasMesActual();
 
-
-      // Luego cargar todas las cuotas, personas, deportes e ingresos por socio en paralelo
-
-      const [cuotasRes, personasRes, deportesRes, pagosRes, ingresosPorSocioRes] = await Promise.all([
-
+      const [
+        cuotasRes,
+        personasRes,
+        deportesRes,
+        pagosRes,
+        ingresosPorSocioRes,
+      ] = await Promise.all([
         cuotaService.getAll(),
         personaService.getAll(),
         deporteService.getAll(),
@@ -155,6 +287,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         ? deportesRes.data
         : [];
       const pagosData = Array.isArray(pagosRes.data) ? pagosRes.data : [];
+
       setCuotas(cuotasData);
       setPersonas(personasData);
       setDeportes(deportesData);
@@ -170,27 +303,49 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         deportesData.map((d) => [Number(d.id), d] as const),
       );
       const pagoMap = new Map<number, any>(
-        pagosData.map((p) => [Number(p.id), p] as const),
+        pagosData.map((p: any) => [Number(p.id), p]),
       );
-      // Transformar cuotas a pagos para mostrar en la tabla
+
       const pagosTransformados = cuotasData.map((cuota, idx) => {
-        const p = personaMap.get(Number(cuota.personaId));
-        const d = deporteMap.get(Number(cuota.deporteId));
-        const pagoAsociado = cuota.pagoId
-          ? pagoMap.get(Number(cuota.pagoId))
+        const personaIdNum = Number(
+          typeof cuota.personaId === "object" && cuota.personaId !== null
+            ? (cuota.personaId as any).id
+            : cuota.personaId,
+        );
+        const deporteIdNum = Number(
+          typeof cuota.deporteId === "object" && cuota.deporteId !== null
+            ? (cuota.deporteId as any).id
+            : cuota.deporteId,
+        );
+        const pagoIdNum = cuota.pagoId
+          ? Number(
+              typeof cuota.pagoId === "object" && cuota.pagoId !== null
+                ? (cuota.pagoId as any).id
+                : cuota.pagoId,
+            )
           : null;
+
+        const p = personaMap.get(personaIdNum);
+        const d = deporteMap.get(deporteIdNum);
+        const pagoAsociado = pagoIdNum ? pagoMap.get(pagoIdNum) : undefined;
+
+        const metodoReal =
+          cuota.estado === "PAGADA"
+            ? pagoAsociado?.metodoPago || "TRANSFERENCIA"
+            : "—";
+        const fechaPagoReal =
+          cuota.estado === "PAGADA"
+            ? pagoAsociado?.fechaPago || cuota.fechaGeneracion || ""
+            : "";
+
         return {
           id: (cuota.id || idx).toString(),
           socio: p ? `${p.nombre} ${p.apellido}` : `Persona ${cuota.personaId}`,
           socioDNI: p?.dni || "",
           monto: cuota.monto,
-          fecha: pagoAsociado?.fechaPago
-            ? pagoAsociado.fechaPago
-            : cuota.estado === "PAGADA"
-              ? cuota.fechaGeneracion
-              : "",
+          fecha: fechaPagoReal,
           mes: getMesAno(cuota.periodo),
-          metodoPago: pagoAsociado?.metodoPago || "EFECTIVO",
+          metodoPago: metodoReal,
           estado:
             cuota.estado === "PAGADA"
               ? "pagado"
@@ -233,7 +388,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return;
     }
 
-    const socio = personas.find((s) => String(s.id) === selectedSocio);
     const cuotasSeleccionadas = cuotas.filter((c) =>
       selectedCuotas.includes(Number(c.id)),
     );
@@ -247,9 +401,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return;
     }
 
-    const montoDescuento = 0;
-    const totalCalculado = montoOriginal;
-
     const fechaPago = new Date();
     const yyyy = fechaPago.getFullYear();
     const mm = String(fechaPago.getMonth() + 1).padStart(2, "0");
@@ -261,8 +412,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         socioId: Number(selectedSocio),
         fechaPago: fechaPagoStr,
         montoOriginal,
-        montoDescuento,
-        montoTotal: totalCalculado,
+        montoDescuento: 0,
+        montoTotal: montoOriginal,
         metodoPago,
         observaciones: observaciones.trim() || undefined,
         cuotaIds: selectedCuotas,
@@ -298,7 +449,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     const contenido = pagosPendientes
       .map((p) => `${p.socioDNI}|${p.socio}|${p.monto}|${p.mes}`)
       .join("\n");
-
     const blob = new Blob([contenido], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -321,7 +471,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
   const exportarCSVIngresosPorDeporte = () => {
     if (ingresosPorDeporte.length === 0 && pagosFiltrados.length === 0) {
-      toast.error('No hay datos para exportar');
+      toast.error("No hay datos para exportar");
       return;
     }
 
@@ -329,20 +479,31 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     const formatearFila = (cols: (string | number)[]) =>
       cols
         .map((col, idx) => {
-          const str = String(col ?? '').trim();
+          const str = String(col ?? "").trim();
           const width = colWidths[idx] || 22;
-          return str.padEnd(width, ' ');
+          return str.padEnd(width, " ");
         })
-        .join(';');
+        .join(";");
 
     let lineas: string[] = [];
-    lineas.push('REPORTE DE INGRESOS POR DISCIPLINA');
-    lineas.push(`Filtro: ${modoFiltroFecha === 'dia' ? `Dia ${fechaFiltro}` : `Desde ${fechaDesdeFiltro || 'inicio'} hasta ${fechaHastaFiltro || 'fin'}`}`);
-    lineas.push(`Deporte: ${filterDeporteIngreso === 'all' ? 'Todos los deportes' : (deportes.find(d => String(d.id) === filterDeporteIngreso)?.nombre || filterDeporteIngreso)}`);
-    lineas.push('');
-    lineas.push(formatearFila(['Deporte', 'Cuotas Cobradas', 'Cuota Social', 'Cuota Entrenador', 'Cuota Seguro', 'Total Recaudado']));
+    lineas.push("REPORTE DE INGRESOS POR DISCIPLINA");
+    lineas.push(
+      `Filtro: ${modoFiltroFecha === "dia" ? `Dia ${fechaFiltro}` : `Desde ${fechaDesdeFiltro || "inicio"} hasta ${fechaHastaFiltro || "fin"}`}`,
+    );
+    lineas.push(`Deporte: ${nombreDeporteIngreso}`);
+    lineas.push("");
+    lineas.push(
+      formatearFila([
+        "Deporte",
+        "Cuotas Cobradas",
+        "Cuota Social",
+        "Cuota Entrenador",
+        "Cuota Seguro",
+        "Total Recaudado",
+      ]),
+    );
 
-    ingresosPorDeporte.forEach(item => {
+    ingresosPorDeporte.forEach((item) => {
       lineas.push(
         formatearFila([
           item.nombreDeporte,
@@ -351,45 +512,246 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           `$${Number(item.totalEntrenador || 0).toLocaleString()}`,
           `$${Number(item.totalSeguro || 0).toLocaleString()}`,
           `$${Number(item.montoTotal || 0).toLocaleString()}`,
-        ])
+        ]),
       );
     });
 
-    if (resumenIngresos) {
-      lineas.push('');
-      lineas.push(
-        formatearFila([
-          'TOTAL GENERAL',
-          resumenIngresos.cantidadIngresos,
-          `$${Number(resumenIngresos.totalSocial || 0).toLocaleString()}`,
-          `$${Number(resumenIngresos.totalEntrenador || 0).toLocaleString()}`,
-          `$${Number(resumenIngresos.totalSeguro || 0).toLocaleString()}`,
-          `$${Number(resumenIngresos.montoTotal || 0).toLocaleString()}`,
-        ])
-      );
-    }
+    lineas.push("");
+    lineas.push(
+      formatearFila([
+        "TOTAL GENERAL",
+        ingresosPorDeporte.reduce(
+          (acc, item) => acc + (Number(item.cantidadCuotasCobradas) || 0),
+          0,
+        ),
+        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSocial) || 0), 0).toLocaleString()}`,
+        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalEntrenador) || 0), 0).toLocaleString()}`,
+        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSeguro) || 0), 0).toLocaleString()}`,
+        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.montoTotal) || 0), 0).toLocaleString()}`,
+      ]),
+    );
 
-    const contenidoCSV = '\uFEFF' + lineas.join('\n');
-    const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+    const contenidoCSV = "\uFEFF" + lineas.join("\n");
+    const blob = new Blob([contenidoCSV], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
 
     const ahora = new Date();
     const yyyy = ahora.getFullYear();
-    const mm = String(ahora.getMonth() + 1).padStart(2, '0');
-    const dd = String(ahora.getDate()).padStart(2, '0');
-    const hh = String(ahora.getHours()).padStart(2, '0');
-    const min = String(ahora.getMinutes()).padStart(2, '0');
-    const ss = String(ahora.getSeconds()).padStart(2, '0');
+    const mm = String(ahora.getMonth() + 1).padStart(2, "0");
+    const dd = String(ahora.getDate()).padStart(2, "0");
+    const hh = String(ahora.getHours()).padStart(2, "0");
+    const min = String(ahora.getMinutes()).padStart(2, "0");
+    const ss = String(ahora.getSeconds()).padStart(2, "0");
     const timestamp = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
 
-    const fechaArchivo = modoFiltroFecha === 'dia' ? fechaFiltro : `${fechaDesdeFiltro || 'inicio'}_${fechaHastaFiltro || 'fin'}`;
+    const fechaArchivo =
+      modoFiltroFecha === "dia"
+        ? fechaFiltro
+        : `${fechaDesdeFiltro || "inicio"}_${fechaHastaFiltro || "fin"}`;
     a.download = `ingresos_deporte_${fechaArchivo}_${timestamp}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('Archivo CSV descargado correctamente');
+    toast.success("Archivo CSV descargado correctamente");
   };
+
+  const exportarCSVResumenMensual = () => {
+    if (resumenMensual.length === 0) {
+      toast.error("No hay datos para exportar");
+      return;
+    }
+
+    const colWidths = [28, 16, 16, 18, 18, 18, 20, 20];
+    const formatearFila = (cols: (string | number)[]) =>
+      cols
+        .map((col, idx) => {
+          const str = String(col ?? "").trim();
+          const width = colWidths[idx] || 18;
+          return str.padEnd(width, " ");
+        })
+        .join(";");
+
+    const mesNum = parseInt(mesResumen, 10);
+    const mesNombre = mesesNombres[mesNum - 1] || mesResumen;
+
+    let lineas: string[] = [];
+    lineas.push("REPORTE DE RESUMEN MENSUAL POR DISCIPLINA");
+    lineas.push(`Período: ${mesNombre} de ${anioResumen}`);
+    lineas.push(`Deporte: ${nombreDeporteResumen}`);
+    lineas.push("");
+    lineas.push(
+      formatearFila([
+        "Deporte",
+        "Socios Al Día",
+        "Socios Deudores",
+        "Cobrado Social",
+        "Cobrado Entrenador",
+        "Cobrado Seguro",
+        "Total Cobrado",
+        "Total Adeudado",
+      ]),
+    );
+
+    resumenMensual.forEach((item) => {
+      lineas.push(
+        formatearFila([
+          item.nombreDeporte,
+          item.sociosAlDia,
+          item.sociosDeudores,
+          `$${Number(item.cobradoSocial || 0).toLocaleString()}`,
+          `$${Number(item.cobradoEntrenador || 0).toLocaleString()}`,
+          `$${Number(item.cobradoSeguro || 0).toLocaleString()}`,
+          `$${Number(item.totalCobrado || 0).toLocaleString()}`,
+          `$${Number(item.totalAdeudado || 0).toLocaleString()}`,
+        ]),
+      );
+    });
+
+    lineas.push("");
+    lineas.push(
+      formatearFila([
+        "TOTAL",
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.sociosAlDia) || 0),
+          0,
+        ),
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.sociosDeudores) || 0),
+          0,
+        ),
+        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoSocial) || 0), 0).toLocaleString()}`,
+        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoEntrenador) || 0), 0).toLocaleString()}`,
+        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoSeguro) || 0), 0).toLocaleString()}`,
+        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.totalCobrado) || 0), 0).toLocaleString()}`,
+        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.totalAdeudado) || 0), 0).toLocaleString()}`,
+      ]),
+    );
+
+    const contenidoCSV = "\uFEFF" + lineas.join("\n");
+    const blob = new Blob([contenidoCSV], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+
+    const ahora = new Date();
+    const yyyy = ahora.getFullYear();
+    const mm = String(ahora.getMonth() + 1).padStart(2, "0");
+    const dd = String(ahora.getDate()).padStart(2, "0");
+    const hh = String(ahora.getHours()).padStart(2, "0");
+    const min = String(ahora.getMinutes()).padStart(2, "0");
+    const ss = String(ahora.getSeconds()).padStart(2, "0");
+    const timestamp = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
+
+    a.download = `resumen_mensual_${anioResumen}_${mesResumen}_${timestamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Archivo CSV descargado correctamente");
+  };
+
+  const ejecutarResumenMensualLocal = useCallback(() => {
+    const anio = parseInt(anioResumen, 10);
+    const mes = parseInt(mesResumen, 10);
+    const cuotasDelMes = cuotas.filter((c) => {
+      if (!c.periodo) return false;
+      const parts = c.periodo.split("-");
+      if (parts.length < 2) return false;
+      return parseInt(parts[0], 10) === anio && parseInt(parts[1], 10) === mes;
+    });
+
+    const deportesAProcesar =
+      filterDeporteResumen !== "all"
+        ? deportes.filter((d) => String(d.id) === filterDeporteResumen)
+        : deportes;
+
+    const resultado: ResumenMensualPorDeporteDTO[] = deportesAProcesar.map(
+      (dep) => {
+        const cuotasDep = cuotasDelMes.filter(
+          (c) => Number(c.deporteId) === Number(dep.id),
+        );
+        const pagadas = cuotasDep.filter((c) => c.estado === "PAGADA");
+        const noPagadas = cuotasDep.filter((c) => c.estado !== "PAGADA");
+
+        let totalCobrado = 0;
+        let cobradoSocial = 0;
+        let cobradoEntrenador = 0;
+        let cobradoSeguro = 0;
+        pagadas.forEach((c) => {
+          totalCobrado += Number(c.monto) || 0;
+          const d = prorratearCuota(c);
+          cobradoSocial += d.social;
+          cobradoEntrenador += d.entrenador;
+          cobradoSeguro += d.seguro;
+        });
+
+        let totalAdeudado = 0;
+        let adeudadoSocial = 0;
+        let adeudadoEntrenador = 0;
+        let adeudadoSeguro = 0;
+        noPagadas.forEach((c) => {
+          totalAdeudado += Number(c.monto) || 0;
+          const d = prorratearCuota(c);
+          adeudadoSocial += d.social;
+          adeudadoEntrenador += d.entrenador;
+          adeudadoSeguro += d.seguro;
+        });
+
+        return {
+          deporteId: Number(dep.id),
+          nombreDeporte: dep.nombre,
+          sociosAlDia: new Set(pagadas.map((c) => Number(c.personaId))).size,
+          sociosDeudores: new Set(noPagadas.map((c) => Number(c.personaId)))
+            .size,
+          totalCobrado,
+          totalAdeudado,
+          cobradoSocial,
+          cobradoEntrenador,
+          cobradoSeguro,
+          adeudadoSocial,
+          adeudadoEntrenador,
+          adeudadoSeguro,
+        };
+      },
+    );
+
+    setResumenMensual(resultado);
+  }, [anioResumen, mesResumen, filterDeporteResumen, cuotas, deportes]);
+
+  const consultarResumenMensual = useCallback(async () => {
+    setCargandoResumenMensual(true);
+    const anio = parseInt(anioResumen, 10);
+    const mes = parseInt(mesResumen, 10);
+    if (isNaN(anio) || isNaN(mes)) {
+      toast.error("Año o mes inválido");
+      setCargandoResumenMensual(false);
+      return;
+    }
+
+    try {
+      const res = await pagoService.getResumenMensual({
+        anio,
+        mes,
+        deporteId:
+          filterDeporteResumen !== "all" ? filterDeporteResumen : undefined,
+      });
+
+      if (res?.data && Array.isArray(res.data)) {
+        setResumenMensual(res.data);
+        toast.success("Resumen mensual cargado correctamente");
+      } else {
+        ejecutarResumenMensualLocal();
+      }
+    } catch (error) {
+      ejecutarResumenMensualLocal();
+    } finally {
+      setCargandoResumenMensual(false);
+    }
+  }, [
+    anioResumen,
+    mesResumen,
+    filterDeporteResumen,
+    ejecutarResumenMensualLocal,
+  ]);
 
   const ejecutarFiltroLocal = useCallback(() => {
     const coincide = (fechaStr?: string) => {
@@ -406,32 +768,49 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return true;
     };
 
-    const pagosDelDia = (Array.isArray(pagosServidor) ? pagosServidor : []).filter(p => coincide(p.fechaPago));
+    const pagosDelDia = (
+      Array.isArray(pagosServidor) ? pagosServidor : []
+    ).filter((p) => coincide(p.fechaPago));
 
-    if (filterDeporteIngreso !== 'all') {
-      const pagosDelDeporte = pagosDelDia.filter(p => {
-        const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(p.id));
-        return cuotasDePago.some(c => String(c.deporteId) === filterDeporteIngreso);
+    if (filterDeporteIngreso !== "all") {
+      const pagosDelDeporte = pagosDelDia.filter((p) => {
+        const cuotasDePago = cuotas.filter(
+          (c) => Number(c.pagoId) === Number(p.id),
+        );
+        return cuotasDePago.some(
+          (c) => String(c.deporteId) === filterDeporteIngreso,
+        );
       });
 
-      const cuotasDelDeporte = cuotas.filter(c =>
-        String(c.deporteId) === filterDeporteIngreso &&
-        pagosDelDeporte.some(p => Number(p.id) === Number(c.pagoId))
+      const cuotasDelDeporte = cuotas.filter(
+        (c) =>
+          String(c.deporteId) === filterDeporteIngreso &&
+          pagosDelDeporte.some((p) => Number(p.id) === Number(c.pagoId)),
       );
 
       if (pagosDelDeporte.length === 0) {
         setResumenIngresos(null);
         setPagosFiltrados([]);
         setIngresosPorDeporte([]);
-        toast.info('No se encontraron ingresos para la disciplina seleccionada');
+        toast.info(
+          "No se encontraron ingresos para la disciplina seleccionada",
+        );
         return;
       }
 
-      const total = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
-      const totalEntrenador = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaEntrenador) || 0), 0);
-      const totalSeguro = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSeguro) || 0), 0);
-      const totalSocial = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSocial) || 0), 0);
-      const dep = deportes.find(d => String(d.id) === filterDeporteIngreso);
+      let total = 0;
+      let totalEntrenador = 0;
+      let totalSeguro = 0;
+      let totalSocial = 0;
+      cuotasDelDeporte.forEach((c) => {
+        total += Number(c.monto) || 0;
+        const d = prorratearCuota(c);
+        totalSocial += d.social;
+        totalEntrenador += d.entrenador;
+        totalSeguro += d.seguro;
+      });
+
+      const dep = deportes.find((d) => String(d.id) === filterDeporteIngreso);
 
       setResumenIngresos({
         cantidadIngresos: cuotasDelDeporte.length,
@@ -441,31 +820,50 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         totalSocial,
       });
       setPagosFiltrados(pagosDelDeporte);
-      setIngresosPorDeporte([{
-        deporteId: Number(filterDeporteIngreso),
-        nombreDeporte: dep?.nombre || 'Deporte',
-        cantidadCuotasCobradas: cuotasDelDeporte.length,
-        totalSocial,
-        totalEntrenador,
-        totalSeguro,
-        montoTotal: total,
-      }]);
-      toast.success(`Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`);
+      setIngresosPorDeporte([
+        {
+          deporteId: Number(filterDeporteIngreso),
+          nombreDeporte: dep?.nombre || "Deporte",
+          cantidadCuotasCobradas: cuotasDelDeporte.length,
+          totalSocial,
+          totalEntrenador,
+          totalSeguro,
+          montoTotal: total,
+        },
+      ]);
+      toast.success(
+        `Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`,
+      );
       return;
     }
 
     if (pagosDelDia.length > 0) {
-      const totalRecaudado = pagosDelDia.reduce((sum, p) => sum + (Number(p.montoTotal) || 0), 0);
-      const totalEntrenador = pagosDelDia.reduce((sum, p) => sum + (Number(p.cuotaEntrenador) || 0), 0);
-      const totalSeguro = pagosDelDia.reduce((sum, p) => sum + (Number(p.cuotaSeguro) || 0), 0);
-      const totalSocial = pagosDelDia.reduce((sum, p) => sum + (Number(p.cuotaSocial) || 0), 0);
+      const totalRecaudado = pagosDelDia.reduce(
+        (sum, p) => sum + (Number(p.montoTotal) || 0),
+        0,
+      );
+      const totalEntrenador = pagosDelDia.reduce(
+        (sum, p) => sum + (Number(p.cuotaEntrenador) || 0),
+        0,
+      );
+      const totalSeguro = pagosDelDia.reduce(
+        (sum, p) => sum + (Number(p.cuotaSeguro) || 0),
+        0,
+      );
+      const totalSocial = pagosDelDia.reduce(
+        (sum, p) => sum + (Number(p.cuotaSocial) || 0),
+        0,
+      );
 
       const deportesMap = new Map<number, IngresosPorDeporteDTO>();
-      cuotas.forEach(c => {
-        if (c.estado === 'PAGADA' && pagosDelDia.some(p => Number(p.id) === Number(c.pagoId))) {
+      cuotas.forEach((c) => {
+        if (
+          c.estado === "PAGADA" &&
+          pagosDelDia.some((p) => Number(p.id) === Number(c.pagoId))
+        ) {
           const depId = Number(c.deporteId);
-          const dep = deportes.find(d => Number(d.id) === depId);
-          const nombre = dep?.nombre || 'General / Social';
+          const dep = deportes.find((d) => Number(d.id) === depId);
+          const nombre = dep?.nombre || "General / Social";
           if (!deportesMap.has(depId)) {
             deportesMap.set(depId, {
               deporteId: depId,
@@ -479,9 +877,10 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           }
           const item = deportesMap.get(depId)!;
           item.cantidadCuotasCobradas += 1;
-          item.totalSocial += Number(c.cuotaSocial) || 0;
-          item.totalEntrenador += Number(c.cuotaEntrenador) || 0;
-          item.totalSeguro += Number(c.cuotaSeguro) || 0;
+          const d = prorratearCuota(c);
+          item.totalSocial += d.social;
+          item.totalEntrenador += d.entrenador;
+          item.totalSeguro += d.seguro;
           item.montoTotal += Number(c.monto) || 0;
         }
       });
@@ -501,7 +900,16 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       setPagosFiltrados([]);
       setIngresosPorDeporte([]);
     }
-  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, filterDeporteIngreso, pagosServidor, cuotas, deportes]);
+  }, [
+    modoFiltroFecha,
+    fechaFiltro,
+    fechaDesdeFiltro,
+    fechaHastaFiltro,
+    filterDeporteIngreso,
+    pagosServidor,
+    cuotas,
+    deportes,
+  ]);
 
   const consultarIngresosPorFecha = useCallback(async () => {
     setCargandoReporte(true);
@@ -522,7 +930,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       if (fechaDesdeFiltro) params.fechaDesde = fechaDesdeFiltro;
       if (fechaHastaFiltro) params.fechaHasta = fechaHastaFiltro;
     }
-    if (filterDeporteIngreso !== 'all') {
+    if (filterDeporteIngreso !== "all") {
       params.deporteId = filterDeporteIngreso;
     }
 
@@ -535,30 +943,45 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
       const listaPagos = Array.isArray(listadoRes?.data) ? listadoRes.data : [];
 
-      if (filterDeporteIngreso !== 'all') {
+      if (filterDeporteIngreso !== "all") {
         const pagosDelDeporte = listaPagos.filter((p: any) => {
-          const cuotasDePago = cuotas.filter(c => Number(c.pagoId) === Number(p.id));
-          return cuotasDePago.some(c => String(c.deporteId) === filterDeporteIngreso);
+          const cuotasDePago = cuotas.filter(
+            (c) => Number(c.pagoId) === Number(p.id),
+          );
+          return cuotasDePago.some(
+            (c) => String(c.deporteId) === filterDeporteIngreso,
+          );
         });
 
-        const cuotasDelDeporte = cuotas.filter(c =>
-          String(c.deporteId) === filterDeporteIngreso &&
-          pagosDelDeporte.some((p: any) => Number(p.id) === Number(c.pagoId))
+        const cuotasDelDeporte = cuotas.filter(
+          (c) =>
+            String(c.deporteId) === filterDeporteIngreso &&
+            pagosDelDeporte.some((p: any) => Number(p.id) === Number(c.pagoId)),
         );
 
         if (pagosDelDeporte.length === 0) {
           setResumenIngresos(null);
           setPagosFiltrados([]);
           setIngresosPorDeporte([]);
-          toast.info('No se encontraron ingresos para la disciplina seleccionada');
+          toast.info(
+            "No se encontraron ingresos para la disciplina seleccionada",
+          );
           return;
         }
 
-        const total = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
-        const totalEntrenador = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaEntrenador) || 0), 0);
-        const totalSeguro = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSeguro) || 0), 0);
-        const totalSocial = cuotasDelDeporte.reduce((sum, c) => sum + (Number(c.cuotaSocial) || 0), 0);
-        const dep = deportes.find(d => String(d.id) === filterDeporteIngreso);
+        let total = 0;
+        let totalEntrenador = 0;
+        let totalSeguro = 0;
+        let totalSocial = 0;
+        cuotasDelDeporte.forEach((c) => {
+          total += Number(c.monto) || 0;
+          const d = prorratearCuota(c);
+          totalSocial += d.social;
+          totalEntrenador += d.entrenador;
+          totalSeguro += d.seguro;
+        });
+
+        const dep = deportes.find((d) => String(d.id) === filterDeporteIngreso);
 
         setResumenIngresos({
           cantidadIngresos: cuotasDelDeporte.length,
@@ -568,29 +991,46 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           totalSocial,
         });
         setPagosFiltrados(pagosDelDeporte);
-        setIngresosPorDeporte([{
-          deporteId: Number(filterDeporteIngreso),
-          nombreDeporte: dep?.nombre || 'Deporte',
-          cantidadCuotasCobradas: cuotasDelDeporte.length,
-          totalSocial,
-          totalEntrenador,
-          totalSeguro,
-          montoTotal: total,
-        }]);
-        toast.success(`Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`);
+        setIngresosPorDeporte([
+          {
+            deporteId: Number(filterDeporteIngreso),
+            nombreDeporte: dep?.nombre || "Deporte",
+            cantidadCuotasCobradas: cuotasDelDeporte.length,
+            totalSocial,
+            totalEntrenador,
+            totalSeguro,
+            montoTotal: total,
+          },
+        ]);
+        toast.success(
+          `Se encontraron ${cuotasDelDeporte.length} cuotas cobradas`,
+        );
       } else {
-        const listaDeportes = Array.isArray(deporteRes?.data) ? deporteRes.data : [];
+        const listaDeportes = Array.isArray(deporteRes?.data)
+          ? deporteRes.data
+          : [];
         setIngresosPorDeporte(listaDeportes);
         setResumenIngresos(resumenRes?.data || null);
         setPagosFiltrados(listaPagos);
-        toast.success(`Se encontraron ${resumenRes?.data?.cantidadIngresos ?? listaPagos.length} ingresos`);
+        toast.success(
+          `Se encontraron ${resumenRes?.data?.cantidadIngresos ?? listaPagos.length} ingresos`,
+        );
       }
     } catch (error) {
       ejecutarFiltroLocal();
     } finally {
       setCargandoReporte(false);
     }
-  }, [modoFiltroFecha, fechaFiltro, fechaDesdeFiltro, fechaHastaFiltro, filterDeporteIngreso, cuotas, deportes, ejecutarFiltroLocal]);
+  }, [
+    modoFiltroFecha,
+    fechaFiltro,
+    fechaDesdeFiltro,
+    fechaHastaFiltro,
+    filterDeporteIngreso,
+    cuotas,
+    deportes,
+    ejecutarFiltroLocal,
+  ]);
 
   const generarReporte = (tipo: "ingresos" | "deudas") => {
     if (tipo === "ingresos") {
@@ -634,13 +1074,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     return variants[estado as keyof typeof variants] || "default";
   };
 
-  const getMetodoPagoLabel = (metodo: string) => {
-    const labels = {
+  const getMetodoPagoLabel = (metodo?: string) => {
+    if (!metodo || metodo === "—") return "—";
+    const labels: Record<string, string> = {
       EFECTIVO: "Efectivo",
       TRANSFERENCIA: "Transferencia",
       DEBITO_AUTOMATICO: "Débito Automático",
     };
-    return labels[metodo as keyof typeof labels] || metodo;
+    return labels[metodo] || metodo;
   };
 
   const togglePagoExpanded = (pagoId: string) => {
@@ -945,6 +1386,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 <Calendar className="w-4 h-4" />
                 Ingresos por Fecha
               </TabsTrigger>
+              <TabsTrigger
+                value="resumen-mensual"
+                className="flex items-center gap-1.5"
+              >
+                <FileText className="w-4 h-4" />
+                Resumen Mensual
+              </TabsTrigger>
             </TabsList>
 
             {["todos", "pagados", "pendientes", "vencidos"].map((tab) => (
@@ -1014,9 +1462,15 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <span>${pago.monto.toLocaleString()}</span>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">
-                                {getMetodoPagoLabel(pago.metodoPago)}
-                              </Badge>
+                              {pago.estado === "pagado" &&
+                              pago.metodoPago &&
+                              pago.metodoPago !== "—" ? (
+                                <Badge variant="outline">
+                                  {getMetodoPagoLabel(pago.metodoPago)}
+                                </Badge>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               {pago.fecha
@@ -1127,7 +1581,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </TableHeader>
                   <TableBody>
                     {Array.isArray(pagosServidor) &&
-                      pagosServidor.length > 0 ? (
+                    pagosServidor.length > 0 ? (
                       pagosServidor
                         .filter((pago: any) => {
                           const matchesDeporte = (() => {
@@ -1225,54 +1679,101 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
                           return (
                             <>
-                              <TableRow key={pago.id} className="cursor-pointer hover:bg-gray-50" onClick={() => togglePagoExpanded(String(pago.id))}>
+                              <TableRow
+                                key={pago.id}
+                                className="cursor-pointer hover:bg-gray-50"
+                                onClick={() =>
+                                  togglePagoExpanded(String(pago.id))
+                                }
+                              >
                                 <TableCell>
                                   {hasConceptos ? (
-                                    isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
+                                    isExpanded ? (
+                                      <ChevronDown className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4" />
+                                    )
                                   ) : null}
                                 </TableCell>
-                                <TableCell>{socio ? `${socio.nombre} ${socio.apellido}` : '—'}</TableCell>
-                                <TableCell>{socio?.dni || '—'}</TableCell>
-                                <TableCell>{deportesNombres || '—'}</TableCell>
-                                <TableCell>${(pago.montoTotal || 0).toLocaleString()}</TableCell>
-                                <TableCell>{formatearFechaDisplay(pago.fechaPago)}</TableCell>
-                                <TableCell>{pago.observaciones || '—'}</TableCell>
+                                <TableCell>
+                                  {socio
+                                    ? `${socio.nombre} ${socio.apellido}`
+                                    : "—"}
+                                </TableCell>
+                                <TableCell>{socio?.dni || "—"}</TableCell>
+                                <TableCell>{deportesNombres || "—"}</TableCell>
+                                <TableCell>
+                                  ${(pago.montoTotal || 0).toLocaleString()}
+                                </TableCell>
+                                <TableCell>
+                                  {formatearFechaDisplay(pago.fechaPago)}
+                                </TableCell>
+                                <TableCell>
+                                  {pago.observaciones || "—"}
+                                </TableCell>
                               </TableRow>
                               {isExpanded && hasConceptos && (
-                                <TableRow key={`${pago.id}-desglose`} className="bg-gray-50">
+                                <TableRow
+                                  key={`${pago.id}-desglose`}
+                                  className="bg-gray-50"
+                                >
                                   <TableCell colSpan={7} className="py-3 px-6">
                                     <div className="space-y-2">
-                                      <p className="text-sm font-semibold text-gray-700">Desglose de conceptos:</p>
+                                      <p className="text-sm font-semibold text-gray-700">
+                                        Desglose de conceptos:
+                                      </p>
                                       <div className="space-y-3">
                                         {desgloseArray.map((d, idx) => (
-                                          <div key={`${pago.id}-dep-${idx}`} className="rounded border bg-white p-3">
-                                            <div className="font-medium text-gray-700 mb-2">{d.nombre}</div>
+                                          <div
+                                            key={`${pago.id}-dep-${idx}`}
+                                            className="rounded border bg-white p-3"
+                                          >
+                                            <div className="font-medium text-gray-700 mb-2">
+                                              {d.nombre}
+                                            </div>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                                               {d.entrenador > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Entrenador:</span>
-                                                  <span className="font-semibold">${d.entrenador.toLocaleString()}</span>
+                                                  <span className="text-gray-600">
+                                                    Entrenador:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    $
+                                                    {d.entrenador.toLocaleString()}
+                                                  </span>
                                                 </div>
                                               )}
                                               {d.seguro > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Seguro:</span>
-                                                  <span className="font-semibold">${d.seguro.toLocaleString()}</span>
+                                                  <span className="text-gray-600">
+                                                    Seguro:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    ${d.seguro.toLocaleString()}
+                                                  </span>
                                                 </div>
                                               )}
                                               {d.social > 0 && (
                                                 <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">Social:</span>
-                                                  <span className="font-semibold">${d.social.toLocaleString()}</span>
+                                                  <span className="text-gray-600">
+                                                    Social:
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    ${d.social.toLocaleString()}
+                                                  </span>
                                                 </div>
                                               )}
                                             </div>
                                           </div>
                                         ))}
                                       </div>
-                                      {pago.montoTotal !== (pago.cuotaEntrenador + pago.cuotaSeguro + pago.cuotaSocial) && (
+                                      {pago.montoTotal !==
+                                        pago.cuotaEntrenador +
+                                          pago.cuotaSeguro +
+                                          pago.cuotaSocial && (
                                         <p className="text-xs text-gray-500 mt-2">
-                                          * El monto total puede diferir de la suma por promociones aplicadas
+                                          * El monto total puede diferir de la
+                                          suma por promociones aplicadas
                                         </p>
                                       )}
                                     </div>
@@ -1349,8 +1850,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <TableCell>
                                 {item.ultimoPago
                                   ? new Date(
-                                    item.ultimoPago,
-                                  ).toLocaleDateString("es-ES")
+                                      item.ultimoPago,
+                                    ).toLocaleDateString("es-ES")
                                   : "-"}
                               </TableCell>
                             </TableRow>
@@ -1377,8 +1878,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-semibold text-base">Consulta de Ingresos por Fecha o Período</h3>
-                    <p className="text-sm text-gray-500">Consulta cuánto dinero ingresó por disciplina en un día puntual o rango temporal.</p>
+                    <h3 className="font-semibold text-base">
+                      Consulta de Ingresos por Fecha o Período
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Consulta cuánto dinero ingresó por disciplina en un día
+                      puntual o rango temporal.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1406,9 +1912,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
                 <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
                   <div className="flex flex-wrap items-end gap-3">
-                    {modoFiltroFecha === 'dia' ? (
+                    {modoFiltroFecha === "dia" ? (
                       <div className="space-y-1.5 w-44 min-w-[175px] shrink-0">
-                        <Label htmlFor="filtro-fecha-dia">Fecha del ingreso</Label>
+                        <Label htmlFor="filtro-fecha-dia">
+                          Fecha del ingreso
+                        </Label>
                         <Input
                           id="filtro-fecha-dia"
                           type="date"
@@ -1420,22 +1928,30 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     ) : (
                       <>
                         <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
-                          <Label htmlFor="filtro-fecha-desde">Fecha Desde</Label>
+                          <Label htmlFor="filtro-fecha-desde">
+                            Fecha Desde
+                          </Label>
                           <Input
                             id="filtro-fecha-desde"
                             type="date"
                             value={fechaDesdeFiltro}
-                            onChange={(e) => setFechaDesdeFiltro(e.target.value)}
+                            onChange={(e) =>
+                              setFechaDesdeFiltro(e.target.value)
+                            }
                             className="w-full"
                           />
                         </div>
                         <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
-                          <Label htmlFor="filtro-fecha-hasta">Fecha Hasta</Label>
+                          <Label htmlFor="filtro-fecha-hasta">
+                            Fecha Hasta
+                          </Label>
                           <Input
                             id="filtro-fecha-hasta"
                             type="date"
                             value={fechaHastaFiltro}
-                            onChange={(e) => setFechaHastaFiltro(e.target.value)}
+                            onChange={(e) =>
+                              setFechaHastaFiltro(e.target.value)
+                            }
                             className="w-full"
                           />
                         </div>
@@ -1443,8 +1959,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     )}
 
                     <div className="space-y-1.5 min-w-[220px] w-fit shrink-0">
-                      <Label htmlFor="filtro-deporte-ingreso">Disciplina / Deporte</Label>
-                      <Popover open={deporteIngresoAbierto} onOpenChange={cambiarAperturaDeporteIngreso}>
+                      <Label htmlFor="filtro-deporte-ingreso">
+                        Disciplina / Deporte
+                      </Label>
+                      <Popover
+                        open={deporteIngresoAbierto}
+                        onOpenChange={cambiarAperturaDeporteIngreso}
+                      >
                         <PopoverTrigger asChild>
                           <Button
                             id="filtro-deporte-ingreso"
@@ -1454,10 +1975,16 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                             className="w-full min-w-[220px] justify-between gap-2 font-normal"
                           >
                             <span>{nombreDeporteIngreso}</span>
-                            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
+                            <ChevronsUpDown
+                              className="h-4 w-4 shrink-0 opacity-50"
+                              aria-hidden="true"
+                            />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                        <PopoverContent
+                          className="w-[var(--radix-popover-trigger-width)] p-0"
+                          align="start"
+                        >
                           <Command shouldFilter={false}>
                             <CommandInput
                               placeholder="Buscar deporte..."
@@ -1466,20 +1993,24 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               onValueChange={setBusquedaDeporteIngreso}
                             />
                             <CommandList>
-                              <CommandEmpty>No se encontraron deportes.</CommandEmpty>
+                              <CommandEmpty>
+                                No se encontraron deportes.
+                              </CommandEmpty>
                               <CommandGroup>
-                                {opcionesDeporteIngresoFiltradas.map(opcion => (
-                                  <CommandItem
-                                    key={opcion.value}
-                                    value={opcion.value}
-                                    onSelect={() => {
-                                      setFilterDeporteIngreso(opcion.value);
-                                      cambiarAperturaDeporteIngreso(false);
-                                    }}
-                                  >
-                                    {opcion.label}
-                                  </CommandItem>
-                                ))}
+                                {opcionesDeporteIngresoFiltradas.map(
+                                  (opcion) => (
+                                    <CommandItem
+                                      key={opcion.value}
+                                      value={opcion.value}
+                                      onSelect={() => {
+                                        setFilterDeporteIngreso(opcion.value);
+                                        cambiarAperturaDeporteIngreso(false);
+                                      }}
+                                    >
+                                      {opcion.label}
+                                    </CommandItem>
+                                  ),
+                                )}
                               </CommandGroup>
                             </CommandList>
                           </Command>
@@ -1489,19 +2020,23 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button onClick={consultarIngresosPorFecha} disabled={cargandoReporte} className="gap-2">
+                    <Button
+                      onClick={consultarIngresosPorFecha}
+                      disabled={cargandoReporte}
+                      className="gap-2"
+                    >
                       <Search className="w-4 h-4" />
-                      {cargandoReporte ? 'Consultando...' : 'Buscar Ingresos'}
+                      {cargandoReporte ? "Consultando..." : "Buscar Ingresos"}
                     </Button>
 
                     <Button
                       variant="ghost"
                       onClick={() => {
-                        setModoFiltroFecha('dia');
+                        setModoFiltroFecha("dia");
                         setFechaFiltro(getFechaHoy());
-                        setFechaDesdeFiltro('');
-                        setFechaHastaFiltro('');
-                        setFilterDeporteIngreso('all');
+                        setFechaDesdeFiltro("");
+                        setFechaHastaFiltro("");
+                        setFilterDeporteIngreso("all");
                         cambiarAperturaDeporteIngreso(false);
                         setResumenIngresos(null);
                         setPagosFiltrados([]);
@@ -1511,7 +2046,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       Limpiar / Hoy
                     </Button>
 
-                    <Button variant="outline" onClick={exportarCSVIngresosPorDeporte} className="gap-1.5">
+                    <Button
+                      variant="outline"
+                      onClick={exportarCSVIngresosPorDeporte}
+                      className="gap-1.5"
+                    >
                       <Download className="w-4 h-4" />
                       Exportar CSV
                     </Button>
@@ -1523,8 +2062,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               {ingresosPorDeporte.length > 0 && (
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-semibold">Ingresos discriminados por Deporte</CardTitle>
-                    <CardDescription>Detalle del dinero recaudado por cada disciplina en el período seleccionado</CardDescription>
+                    <CardTitle className="text-base font-semibold">
+                      Ingresos discriminados por Deporte
+                    </CardTitle>
+                    <CardDescription>
+                      Detalle del dinero recaudado por cada disciplina en el
+                      período seleccionado
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
                     <div className="border-t overflow-x-auto">
@@ -1532,21 +2076,40 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Deporte / Disciplina</TableHead>
-                            <TableHead className="text-center">Cuotas Cobradas</TableHead>
+                            <TableHead className="text-center">
+                              Cuotas Cobradas
+                            </TableHead>
                             <TableHead>Social</TableHead>
                             <TableHead>Entrenador</TableHead>
                             <TableHead>Seguro</TableHead>
-                            <TableHead className="text-right">Total Ingresado</TableHead>
+                            <TableHead className="text-right">
+                              Total Ingresado
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {ingresosPorDeporte.map((item) => (
                             <TableRow key={`dep-${item.deporteId}`}>
-                              <TableCell className="font-semibold">{item.nombreDeporte}</TableCell>
-                              <TableCell className="text-center">{item.cantidadCuotasCobradas}</TableCell>
-                              <TableCell>${Number(item.totalSocial || 0).toLocaleString()}</TableCell>
-                              <TableCell>${Number(item.totalEntrenador || 0).toLocaleString()}</TableCell>
-                              <TableCell>${Number(item.totalSeguro || 0).toLocaleString()}</TableCell>
+                              <TableCell className="font-semibold">
+                                {item.nombreDeporte}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {item.cantidadCuotasCobradas}
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(item.totalSocial || 0).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(
+                                  item.totalEntrenador || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(item.totalSeguro || 0).toLocaleString()}
+                              </TableCell>
                               <TableCell className="text-right font-bold text-green-700">
                                 ${Number(item.montoTotal || 0).toLocaleString()}
                               </TableCell>
@@ -1555,24 +2118,61 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         </TableBody>
                         <TableBody>
                           <TableRow className="border-0 hover:bg-transparent pointer-events-none">
-                            <TableCell colSpan={6} className="py-2.5 border-0">&nbsp;</TableCell>
+                            <TableCell colSpan={6} className="py-2.5 border-0">
+                              &nbsp;
+                            </TableCell>
                           </TableRow>
                           <TableRow className="border-t-2 bg-gray-50/80 font-bold">
-                            <TableCell className="font-semibold">Total</TableCell>
+                            <TableCell className="font-semibold">
+                              Total
+                            </TableCell>
                             <TableCell className="text-center">
-                              {ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.cantidadCuotasCobradas) || 0), 0)}
+                              {ingresosPorDeporte.reduce(
+                                (acc, item) =>
+                                  acc +
+                                  (Number(item.cantidadCuotasCobradas) || 0),
+                                0,
+                              )}
                             </TableCell>
                             <TableCell>
-                              ${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSocial) || 0), 0).toLocaleString()}
+                              $
+                              {ingresosPorDeporte
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.totalSocial) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
                             </TableCell>
                             <TableCell>
-                              ${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalEntrenador) || 0), 0).toLocaleString()}
+                              $
+                              {ingresosPorDeporte
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.totalEntrenador) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
                             </TableCell>
                             <TableCell>
-                              ${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSeguro) || 0), 0).toLocaleString()}
+                              $
+                              {ingresosPorDeporte
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.totalSeguro) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
                             </TableCell>
                             <TableCell className="text-right font-extrabold text-green-700 text-base">
-                              ${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.montoTotal) || 0), 0).toLocaleString()}
+                              $
+                              {ingresosPorDeporte
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.montoTotal) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
                             </TableCell>
                           </TableRow>
                         </TableBody>
@@ -1654,6 +2254,331 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                   </TableBody>
                 </Table>
               </div>
+            </TabsContent>
+
+            {/* Pestaña Resumen Mensual */}
+            <TabsContent value="resumen-mensual" className="space-y-4">
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-base">
+                      Resumen Mensual por Disciplina
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Liquidación mensual por período: socios al día, deudores y
+                      montos cobrados vs adeudados.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1.5 w-40 min-w-[150px] shrink-0">
+                      <Label htmlFor="resumen-mes">Mes</Label>
+                      <Select value={mesResumen} onValueChange={setMesResumen}>
+                        <SelectTrigger id="resumen-mes" className="w-full">
+                          <SelectValue placeholder="Mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {mesesNombres.map((m, idx) => (
+                            <SelectItem key={idx + 1} value={String(idx + 1)}>
+                              {m.charAt(0).toUpperCase() + m.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5 w-28 min-w-[100px] shrink-0">
+                      <Label htmlFor="resumen-anio">Año</Label>
+                      <Input
+                        id="resumen-anio"
+                        type="number"
+                        min="2020"
+                        max="2035"
+                        value={anioResumen}
+                        onChange={(e) => setAnioResumen(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 min-w-[220px] w-fit shrink-0">
+                      <Label htmlFor="resumen-deporte">
+                        Disciplina / Deporte
+                      </Label>
+                      <Popover
+                        open={deporteResumenAbierto}
+                        onOpenChange={cambiarAperturaDeporteResumen}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="resumen-deporte"
+                            type="button"
+                            variant="outline"
+                            aria-label={`Disciplina / Deporte: ${nombreDeporteResumen}`}
+                            className="w-full min-w-[220px] justify-between gap-2 font-normal"
+                          >
+                            <span>{nombreDeporteResumen}</span>
+                            <ChevronsUpDown
+                              className="h-4 w-4 shrink-0 opacity-50"
+                              aria-hidden="true"
+                            />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[var(--radix-popover-trigger-width)] p-0"
+                          align="start"
+                        >
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Buscar deporte..."
+                              aria-label="Buscar disciplina o deporte"
+                              value={busquedaDeporteResumen}
+                              onValueChange={setBusquedaDeporteResumen}
+                            />
+                            <CommandList>
+                              <CommandEmpty>
+                                No se encontraron deportes.
+                              </CommandEmpty>
+                              <CommandGroup>
+                                {opcionesDeporteResumenFiltradas.map(
+                                  (opcion) => (
+                                    <CommandItem
+                                      key={opcion.value}
+                                      value={opcion.value}
+                                      onSelect={() => {
+                                        setFilterDeporteResumen(opcion.value);
+                                        cambiarAperturaDeporteResumen(false);
+                                      }}
+                                    >
+                                      {opcion.label}
+                                    </CommandItem>
+                                  ),
+                                )}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      onClick={consultarResumenMensual}
+                      disabled={cargandoResumenMensual}
+                      className="gap-2"
+                    >
+                      <Search className="w-4 h-4" />
+                      {cargandoResumenMensual
+                        ? "Consultando..."
+                        : "Consultar Resumen"}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        const hoy = new Date();
+                        setMesResumen(String(hoy.getMonth() + 1));
+                        setAnioResumen(String(hoy.getFullYear()));
+                        setFilterDeporteResumen("all");
+                        cambiarAperturaDeporteResumen(false);
+                        setResumenMensual([]);
+                      }}
+                    >
+                      Limpiar / Mes Actual
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={exportarCSVResumenMensual}
+                      className="gap-1.5"
+                    >
+                      <Download className="w-4 h-4" />
+                      Exportar CSV
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {resumenMensual.length > 0 ? (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-semibold">
+                      Liquidación de{" "}
+                      {mesesNombres[parseInt(mesResumen, 10) - 1] || mesResumen}{" "}
+                      {anioResumen}
+                    </CardTitle>
+                    <CardDescription>
+                      Detalle de socios al día, deudores y montos
+                      correspondientes a las cuotas del período
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="border-t overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Deporte / Disciplina</TableHead>
+                            <TableHead className="text-center">
+                              Socios Al Día
+                            </TableHead>
+                            <TableHead className="text-center">
+                              Socios Deudores
+                            </TableHead>
+                            <TableHead>Social</TableHead>
+                            <TableHead>Entrenador</TableHead>
+                            <TableHead>Seguro</TableHead>
+                            <TableHead className="text-right">
+                              Total Cobrado
+                            </TableHead>
+                            <TableHead className="text-right">
+                              Total Adeudado
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {resumenMensual.map((item) => (
+                            <TableRow key={`resumen-dep-${item.deporteId}`}>
+                              <TableCell className="font-semibold">
+                                {item.nombreDeporte}
+                              </TableCell>
+                              <TableCell className="text-center font-medium text-blue-700">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-blue-50 text-blue-700 border-blue-200"
+                                >
+                                  {item.sociosAlDia}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center font-medium text-amber-700">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-50 text-amber-700 border-amber-200"
+                                >
+                                  {item.sociosDeudores}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(
+                                  item.cobradoSocial || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(
+                                  item.cobradoEntrenador || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                $
+                                {Number(
+                                  item.cobradoSeguro || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-green-700">
+                                $
+                                {Number(
+                                  item.totalCobrado || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-red-600">
+                                $
+                                {Number(
+                                  item.totalAdeudado || 0,
+                                ).toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                        <TableBody>
+                          <TableRow className="border-0 hover:bg-transparent pointer-events-none">
+                            <TableCell colSpan={8} className="py-2.5 border-0">
+                              &nbsp;
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="border-t-2 bg-gray-50/80 font-bold">
+                            <TableCell className="font-semibold">
+                              Total
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {resumenMensual.reduce(
+                                (acc, item) =>
+                                  acc + (Number(item.sociosAlDia) || 0),
+                                0,
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {resumenMensual.reduce(
+                                (acc, item) =>
+                                  acc + (Number(item.sociosDeudores) || 0),
+                                0,
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              $
+                              {resumenMensual
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.cobradoSocial) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              $
+                              {resumenMensual
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.cobradoEntrenador) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              $
+                              {resumenMensual
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.cobradoSeguro) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right font-extrabold text-green-700 text-base">
+                              $
+                              {resumenMensual
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.totalCobrado) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right font-extrabold text-red-600 text-base">
+                              $
+                              {resumenMensual
+                                .reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.totalAdeudado) || 0),
+                                  0,
+                                )
+                                .toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="border rounded-lg p-8 text-center text-gray-500">
+                  {cargandoResumenMensual
+                    ? "Consultando resumen mensual..."
+                    : "Selecciona un mes, año y disciplina para consultar el resumen mensual."}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

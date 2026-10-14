@@ -1,13 +1,14 @@
-import api from './api';
+import api from "./api";
 
 const PAGO_ENDPOINTS = {
-  CREATE: '/pago',
-  GET_ALL: '/pagos',
-  GET_INGRESOS_POR_SOCIO: '/pagos/ingresos-por-socio', 
-  FILTRO: '/pagos/filtro',
-  RESUMEN: '/pagos/resumen-ingresos',
-  INGRESOS_POR_DEPORTE: '/pagos/ingresos-por-deporte',
-  CUOTAS_COBRADAS: '/pagos/cuotas-cobradas',
+  CREATE: "/pago",
+  GET_ALL: "/pagos",
+  GET_INGRESOS_POR_SOCIO: "/pagos/ingresos-por-socio",
+  FILTRO: "/pagos/filtro",
+  RESUMEN: "/pagos/resumen-ingresos",
+  INGRESOS_POR_DEPORTE: "/pagos/ingresos-por-deporte",
+  CUOTAS_COBRADAS: "/pagos/cuotas-cobradas",
+  RESUMEN_MENSUAL: "/pagos/resumen-mensual",
 };
 
 export interface CrearPagoPayload {
@@ -16,7 +17,7 @@ export interface CrearPagoPayload {
   montoOriginal: number;
   montoDescuento: number;
   montoTotal: number;
-  metodoPago: 'EFECTIVO' | 'TRANSFERENCIA' | 'DEBITO_AUTOMATICO';
+  metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
   observaciones?: string;
   cuotaIds: number[];
 }
@@ -32,7 +33,7 @@ export interface IngresoPorSocioDTO {
 }
 
 export interface FiltroFechaParams {
-  fecha?: string;      // Formato: YYYY-MM-DD
+  fecha?: string; // Formato: YYYY-MM-DD
   fechaDesde?: string; // Formato: YYYY-MM-DD
   fechaHasta?: string; // Formato: YYYY-MM-DD
   deporteId?: number | string;
@@ -48,6 +49,27 @@ export interface IngresosPorDeporteDTO {
   montoTotal: number;
 }
 
+export interface ResumenMensualPorDeporteDTO {
+  deporteId: number;
+  nombreDeporte: string;
+  sociosAlDia: number;
+  sociosDeudores: number;
+  totalCobrado: number;
+  totalAdeudado: number;
+  cobradoSocial: number;
+  cobradoEntrenador: number;
+  cobradoSeguro: number;
+  adeudadoSocial: number;
+  adeudadoEntrenador: number;
+  adeudadoSeguro: number;
+}
+
+export interface FiltroResumenMensualParams {
+  anio: number;
+  mes: number;
+  deporteId?: number | string;
+}
+
 export interface Pago {
   id: number;
   socioId: number;
@@ -56,7 +78,7 @@ export interface Pago {
   cuotaEntrenador: number;
   cuotaSeguro: number;
   cuotaSocial: number;
-  metodoPago: 'EFECTIVO' | 'TRANSFERENCIA' | 'DEBITO_AUTOMATICO';
+  metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
   observaciones?: string;
   cuotasIds: number[];
 }
@@ -74,94 +96,135 @@ export interface ResumenIngresos {
 
 const pagoService = {
   getAll() {
-    return api.get(PAGO_ENDPOINTS.GET_ALL).catch(error => {
-      console.error('Error al obtener pagos:', error);
+    return api.get(PAGO_ENDPOINTS.GET_ALL).catch((error) => {
+      console.error("Error al obtener pagos:", error);
       throw error;
     });
   },
   create(payload: CrearPagoPayload) {
-    return api.post<string>(PAGO_ENDPOINTS.CREATE, payload).catch(error => {
-      console.error('Error al crear pago:', error);
+    return api.post<string>(PAGO_ENDPOINTS.CREATE, payload).catch((error) => {
+      console.error("Error al crear pago:", error);
       throw error;
     });
   },
   getIngresosPorSocio() {
-    return api.get<IngresoPorSocioDTO[]>(PAGO_ENDPOINTS.GET_INGRESOS_POR_SOCIO).catch(error => {
-      console.error('Error al obtener ingresos por socio:', error);
-      throw error;
-    });
+    return api
+      .get<IngresoPorSocioDTO[]>(PAGO_ENDPOINTS.GET_INGRESOS_POR_SOCIO)
+      .catch((error) => {
+        console.error("Error al obtener ingresos por socio:", error);
+        throw error;
+      });
   },
   getByFechaORango(params: FiltroFechaParams) {
     const query = new URLSearchParams();
-    if (params.fecha && params.fecha.trim() !== '') {
-      query.append('fecha', params.fecha.trim());
+    if (params.fecha && params.fecha.trim() !== "") {
+      query.append("fecha", params.fecha.trim());
     }
-    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
-      query.append('fechaDesde', params.fechaDesde.trim());
+    if (params.fechaDesde && params.fechaDesde.trim() !== "") {
+      query.append("fechaDesde", params.fechaDesde.trim());
     }
-    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
-      query.append('fechaHasta', params.fechaHasta.trim());
+    if (params.fechaHasta && params.fechaHasta.trim() !== "") {
+      query.append("fechaHasta", params.fechaHasta.trim());
     }
-    const url = query.toString() ? `${PAGO_ENDPOINTS.FILTRO}?${query.toString()}` : PAGO_ENDPOINTS.FILTRO;
-    return api.get<Pago[]>(url).catch(error => {
-      console.warn('Aviso al obtener pagos filtrados del backend:', error);
+    const url = query.toString()
+      ? `${PAGO_ENDPOINTS.FILTRO}?${query.toString()}`
+      : PAGO_ENDPOINTS.FILTRO;
+    return api.get<Pago[]>(url).catch((error) => {
+      console.warn("Aviso al obtener pagos filtrados del backend:", error);
       throw error;
     });
   },
   getResumenIngresos(params: FiltroFechaParams) {
     const query = new URLSearchParams();
-    if (params.fecha && params.fecha.trim() !== '') {
-      query.append('fecha', params.fecha.trim());
+    if (params.fecha && params.fecha.trim() !== "") {
+      query.append("fecha", params.fecha.trim());
     }
-    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
-      query.append('fechaDesde', params.fechaDesde.trim());
+    if (params.fechaDesde && params.fechaDesde.trim() !== "") {
+      query.append("fechaDesde", params.fechaDesde.trim());
     }
-    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
-      query.append('fechaHasta', params.fechaHasta.trim());
+    if (params.fechaHasta && params.fechaHasta.trim() !== "") {
+      query.append("fechaHasta", params.fechaHasta.trim());
     }
-    const url = query.toString() ? `${PAGO_ENDPOINTS.RESUMEN}?${query.toString()}` : PAGO_ENDPOINTS.RESUMEN;
-    return api.get<ResumenIngresos>(url).catch(error => {
-      console.warn('Aviso al obtener resumen de ingresos del backend:', error);
+    const url = query.toString()
+      ? `${PAGO_ENDPOINTS.RESUMEN}?${query.toString()}`
+      : PAGO_ENDPOINTS.RESUMEN;
+    return api.get<ResumenIngresos>(url).catch((error) => {
+      console.warn("Aviso al obtener resumen de ingresos del backend:", error);
       throw error;
     });
   },
   getIngresosPorDeporte(params: FiltroFechaParams) {
     const query = new URLSearchParams();
-    if (params.fecha && params.fecha.trim() !== '') {
-      query.append('fecha', params.fecha.trim());
+    if (params.fecha && params.fecha.trim() !== "") {
+      query.append("fecha", params.fecha.trim());
     }
-    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
-      query.append('fechaDesde', params.fechaDesde.trim());
+    if (params.fechaDesde && params.fechaDesde.trim() !== "") {
+      query.append("fechaDesde", params.fechaDesde.trim());
     }
-    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
-      query.append('fechaHasta', params.fechaHasta.trim());
+    if (params.fechaHasta && params.fechaHasta.trim() !== "") {
+      query.append("fechaHasta", params.fechaHasta.trim());
     }
-    if (params.deporteId !== undefined && params.deporteId !== null && params.deporteId !== '' && params.deporteId !== 'all') {
-      query.append('deporteId', String(params.deporteId));
+    if (
+      params.deporteId !== undefined &&
+      params.deporteId !== null &&
+      params.deporteId !== "" &&
+      params.deporteId !== "all"
+    ) {
+      query.append("deporteId", String(params.deporteId));
     }
-    const url = query.toString() ? `${PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE}?${query.toString()}` : PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE;
-    return api.get<IngresosPorDeporteDTO[]>(url).catch(error => {
-      console.warn('Aviso al obtener ingresos por deporte del backend:', error);
+    const url = query.toString()
+      ? `${PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE}?${query.toString()}`
+      : PAGO_ENDPOINTS.INGRESOS_POR_DEPORTE;
+    return api.get<IngresosPorDeporteDTO[]>(url).catch((error) => {
+      console.warn("Aviso al obtener ingresos por deporte del backend:", error);
       throw error;
     });
   },
   getCuotasCobradas(params: FiltroFechaParams) {
     const query = new URLSearchParams();
-    if (params.fecha && params.fecha.trim() !== '') {
-      query.append('fecha', params.fecha.trim());
+    if (params.fecha && params.fecha.trim() !== "") {
+      query.append("fecha", params.fecha.trim());
     }
-    if (params.fechaDesde && params.fechaDesde.trim() !== '') {
-      query.append('fechaDesde', params.fechaDesde.trim());
+    if (params.fechaDesde && params.fechaDesde.trim() !== "") {
+      query.append("fechaDesde", params.fechaDesde.trim());
     }
-    if (params.fechaHasta && params.fechaHasta.trim() !== '') {
-      query.append('fechaHasta', params.fechaHasta.trim());
+    if (params.fechaHasta && params.fechaHasta.trim() !== "") {
+      query.append("fechaHasta", params.fechaHasta.trim());
     }
-    if (params.deporteId !== undefined && params.deporteId !== null && params.deporteId !== '' && params.deporteId !== 'all') {
-      query.append('deporteId', String(params.deporteId));
+    if (
+      params.deporteId !== undefined &&
+      params.deporteId !== null &&
+      params.deporteId !== "" &&
+      params.deporteId !== "all"
+    ) {
+      query.append("deporteId", String(params.deporteId));
     }
-    const url = query.toString() ? `${PAGO_ENDPOINTS.CUOTAS_COBRADAS}?${query.toString()}` : PAGO_ENDPOINTS.CUOTAS_COBRADAS;
-    return api.get<any[]>(url).catch(error => {
-      console.warn('Aviso al obtener cuotas cobradas del backend:', error);
+    const url = query.toString()
+      ? `${PAGO_ENDPOINTS.CUOTAS_COBRADAS}?${query.toString()}`
+      : PAGO_ENDPOINTS.CUOTAS_COBRADAS;
+    return api.get<any[]>(url).catch((error) => {
+      console.warn("Aviso al obtener cuotas cobradas del backend:", error);
+      throw error;
+    });
+  },
+  getResumenMensual(params: FiltroResumenMensualParams) {
+    const query = new URLSearchParams();
+    query.append("anio", String(params.anio));
+    query.append("mes", String(params.mes));
+    if (
+      params.deporteId !== undefined &&
+      params.deporteId !== null &&
+      params.deporteId !== "" &&
+      params.deporteId !== "all"
+    ) {
+      query.append("deporteId", String(params.deporteId));
+    }
+    const url = `${PAGO_ENDPOINTS.RESUMEN_MENSUAL}?${query.toString()}`;
+    return api.get<ResumenMensualPorDeporteDTO[]>(url).catch((error) => {
+      console.warn(
+        "Aviso al obtener resumen mensual por deporte del backend:",
+        error,
+      );
       throw error;
     });
   },

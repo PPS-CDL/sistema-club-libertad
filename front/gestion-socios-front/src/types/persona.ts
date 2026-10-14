@@ -1,4 +1,15 @@
-export type CategoriaBackend = 'SOCIO' | 'JUGADOR' | 'SOCIOYJUGADOR';
+export type CategoriaBackend = "SOCIO" | "JUGADOR" | "SOCIOYJUGADOR";
+
+export interface PersonaAsambleaDTO {
+  id: number;
+  apellido: string;
+  nombre: string;
+  dni: string;
+  categoria: string;
+  fechaNacimiento: string;
+  edad: number;
+  cuotasAdeudadas: number;
+}
 
 export interface Persona {
   id: string;
