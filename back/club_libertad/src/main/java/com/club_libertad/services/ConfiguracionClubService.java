@@ -10,23 +10,28 @@ import java.time.LocalDate;
 @Service
 public class ConfiguracionClubService {
     private final ConfiguracionClubRepository configuracionRepository;
-    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
-
-    public ConfiguracionClubService(ConfiguracionClubRepository configuracionRepository, 
-                                    com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository) {
+    public ConfiguracionClubService(ConfiguracionClubRepository configuracionRepository) {
         this.configuracionRepository = configuracionRepository;
-        this.cuotaSocialRepository = cuotaSocialRepository;
     }
 
     @Transactional(readOnly = true)
     public ConfiguracionClub getConfiguracion() {
-        return configuracionRepository.findById(1L).orElseGet(this::inicializarConfiguracionEnBlanco);
+        // Busca el primer registro existente o lo inicializa si la tabla está vacía
+        return configuracionRepository.findAll().stream()
+                .findFirst()
+                .orElseGet(this::inicializarConfiguracionEnBlanco);
+    }
+
+    @Transactional
+    public ConfiguracionClub getConfiguracionForUpdate() {
+        return configuracionRepository.findAllForUpdate().stream()
+                .findFirst()
+                .orElseGet(this::inicializarConfiguracionEnBlanco);
     }
 
     @Transactional
     public ConfiguracionClub inicializarConfiguracionEnBlanco() {
         ConfiguracionClub config = new ConfiguracionClub();
-        config.setId(1L);
         config.setImporteCuotaIndividual(BigDecimal.ZERO);
         config.setImporteCuotaFamiliar(BigDecimal.ZERO);
         config.setFechaEfectiva(null);
@@ -35,7 +40,7 @@ public class ConfiguracionClubService {
 
     @Transactional
     public ConfiguracionClub updateConfiguracion(ConfiguracionClubDTO dto) {
-        ConfiguracionClub config = getConfiguracion();
+        ConfiguracionClub config = getConfiguracionForUpdate();
 
         // Validaciones de importes
         if (dto.getImporteCuotaIndividual() != null) {
@@ -59,25 +64,22 @@ public class ConfiguracionClubService {
         if (nuevaFecha != null && !nuevaFecha.equals(fechaActual)) {
             LocalDate hoy = LocalDate.now();
 
-            // Regla: Bloqueo de modificación si la fecha actual ya se alcanzó (o se superó)
+            // Bloqueo de modificación si la fecha configurada previamente ya se alcanzó
             if (fechaActual != null && !hoy.isBefore(fechaActual)) {
                 throw new IllegalStateException("La fecha efectiva ya se alcanzó y no puede ser modificada.");
             }
-            // Regla: Bloqueo si CuotaSocialRepository.count() > 0
-            if (cuotaSocialRepository.count() > 0) {
-                throw new IllegalStateException("No se puede modificar la fecha efectiva porque el sistema ya ha generado cuotas sociales independientes.");
-            }
-           
+
             // Debe ser el primer día de un mes
             if (nuevaFecha.getDayOfMonth() != 1) {
                 throw new IllegalArgumentException("La fecha efectiva debe configurarse para el primer día de un mes.");
             }
 
-            // No puede ser retroactiva
-            if (nuevaFecha.isBefore(hoy)) {
-                throw new IllegalArgumentException("La fecha efectiva no puede ser una fecha pasada.");
+            // No puede ser retroactiva a meses pasados (permite configurar el mes actual)
+            LocalDate primerDiaMesActual = hoy.withDayOfMonth(1);
+            if (nuevaFecha.isBefore(primerDiaMesActual)) {
+                throw new IllegalArgumentException("La fecha efectiva no puede configurarse para un mes pasado.");
             }
-
+            
             config.setFechaEfectiva(nuevaFecha);
         }
         return configuracionRepository.save(config);

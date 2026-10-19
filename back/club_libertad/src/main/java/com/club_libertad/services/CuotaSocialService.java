@@ -28,56 +28,154 @@ public class CuotaSocialService {
         this.personaRepository = personaRepository;
         this.configuracionClubService = configuracionClubService;
     }
+@Transactional(readOnly = true)
+public List<CuotaSocial> getAllCuotasSociales() {
+    return cuotaSocialRepository.findAll();
+}
+
+    @Transactional
+    public void prepararCambioIntegrantesGrupo(Long grupoId, boolean cambioIntegrantes) {
+        if (!cambioIntegrantes) return;
+
+        ConfiguracionClub config = configuracionClubService.getConfiguracionForUpdate();
+        if (config.getFechaEfectiva() == null
+                || YearMonth.now().atDay(1).isBefore(config.getFechaEfectiva())) return;
+
+        String periodo = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        Optional<CuotaSocial> cuotaOpt = cuotaSocialRepository.findActivaByGrupoAndPeriodo(grupoId, periodo);
+        if (cuotaOpt.isEmpty()) return;
+
+        CuotaSocial cuota = cuotaOpt.get();
+        if ("PAGADA".equals(cuota.getEstado())) {
+            throw new IllegalStateException("No se pueden cambiar integrantes mientras la cuota familiar del período está pagada.");
+        }
+        cuota.setEstado("CANCELADA");
+        cuotaSocialRepository.save(cuota);
+    }
+
+    @Transactional
+    public void sincronizarCuotasSocialesMesActual() {
+        generarCuotasSocialesMesActual();
+    }
 
     @Transactional
     public void generarCuotasSocialesMesActual() {
-        ConfiguracionClub config = configuracionClubService.getConfiguracion();
+        ConfiguracionClub config = configuracionClubService.getConfiguracionForUpdate();
         LocalDate fechaEfectiva = config.getFechaEfectiva();
-        
-        if (fechaEfectiva == null) return; // Sistema no configurado
+        if (fechaEfectiva == null) return;
 
         YearMonth mesActual = YearMonth.now();
-        YearMonth mesEfectivo = YearMonth.from(fechaEfectiva);
-
-        // Si el mes actual es anterior a la fecha efectiva, no se genera la cuota independiente
-        if (mesActual.isBefore(mesEfectivo)) {
-            return;
-        }
+        LocalDate inicioPeriodo = mesActual.atDay(1);
+        if (inicioPeriodo.isBefore(fechaEfectiva)) return;
 
         String periodo = mesActual.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-        LocalDate fechaVencimiento = mesActual.atDay(10); // Ejemplo: Vence el 10 del mes
+        LocalDate fechaVencimiento = mesActual.atDay(10);
         if (LocalDate.now().isAfter(fechaVencimiento)) {
-            fechaVencimiento = LocalDate.now().plusDays(5); // Dar margen si se genera tarde
+            fechaVencimiento = LocalDate.now().plusDays(5);
+        }
+
+        java.util.Set<Long> gruposConCuotaFamiliarPagada = new java.util.HashSet<>();
+        for (CuotaSocial cuota : cuotaSocialRepository.findByPeriodoForUpdate(periodo)) {
+            GrupoFamiliar grupoCuota = cuota.getGrupoFamiliar();
+            if ("FAMILIAR".equals(cuota.getTipoCuota()) && "PAGADA".equals(cuota.getEstado())
+                    && grupoCuota != null) {
+                gruposConCuotaFamiliarPagada.add(grupoCuota.getId());
+            }
+            if (!"PENDIENTE".equals(cuota.getEstado()) && !"VENCIDA".equals(cuota.getEstado())) continue;
+
+            boolean cancelar = false;
+            if ("INDIVIDUAL".equals(cuota.getTipoCuota())) {
+                Persona socio = cuota.getSocio();
+                cancelar = !Boolean.TRUE.equals(socio.getActivo())
+                        || socio.getCategoria() == CategoriaPersona.JUGADOR
+                        || esGrupoFamiliarValido(socio.getGrupoFamiliar());
+            } else if ("FAMILIAR".equals(cuota.getTipoCuota())) {
+                cancelar = !esGrupoFamiliarValido(grupoCuota);
+            }
+            if (cancelar) {
+                cuota.setEstado("CANCELADA");
+                cuotaSocialRepository.save(cuota);
+            }
         }
 
         List<Persona> sociosActivos = personaRepository.findAll().stream()
-                .filter(Persona::getActivo)
+                .filter(persona -> Boolean.TRUE.equals(persona.getActivo()))
                 .toList();
-
         for (Persona persona : sociosActivos) {
-            // Regla: JUGADOR no paga cuota social
-            if (persona.getCategoria() == CategoriaPersona.JUGADOR) {
-                continue;
-            }
+            if (persona.getCategoria() == CategoriaPersona.JUGADOR) continue;
 
             GrupoFamiliar grupo = persona.getGrupoFamiliar();
-            
             if (grupo != null) {
-                // Validación del tamaño real del grupo (mínimo 3)
-                int integrantesSize = grupo.getIntegrantes().size();
-                boolean esGrupoValido = integrantesSize >= 3;
-
-                if (esGrupoValido) {
-                    if (grupo.getResponsable() != null && grupo.getResponsable().getId().equals(persona.getId())) {
-                        procesarCuotaFamiliar(persona, grupo, periodo, config.getImporteCuotaFamiliar(), fechaVencimiento);
+                if (esGrupoFamiliarValido(grupo)) {
+                    boolean integranteYaPagoIndividual = false;
+                    for (Persona integrante : integrantesDe(grupo)) {
+                        if (Boolean.TRUE.equals(integrante.getActivo())
+                                && integrante.getCategoria() != CategoriaPersona.JUGADOR) {
+                            boolean pagoIndividualExistente = cancelarCuotaIndividualPendiente(integrante, periodo);
+                            integranteYaPagoIndividual = integranteYaPagoIndividual || pagoIndividualExistente;
+                        }
                     }
-                    // Si no es el responsable, se ignora (ya está cubierto)
+                    Persona responsable = grupo.getResponsable();
+                    if (responsable.getId().equals(persona.getId())) {
+                        if (integranteYaPagoIndividual) {
+                            cancelarCuotaFamiliarPendiente(grupo, periodo);
+                        } else {
+                            procesarCuotaFamiliar(responsable, grupo, periodo,
+                                    config.getImporteCuotaFamiliar(), fechaVencimiento);
+                        }
+                    }
                     continue;
                 }
+                if (gruposConCuotaFamiliarPagada.contains(grupo.getId())) continue;
             }
 
-            // Si no tiene grupo o el grupo es inválido (< 3), se cobra INDIVIDUAL
-            procesarCuotaIndividual(persona, periodo, config.getImporteCuotaIndividual(), fechaVencimiento);
+            procesarCuotaIndividual(persona, periodo,
+                    config.getImporteCuotaIndividual(), fechaVencimiento);
+        }
+    }
+
+    private List<Persona> integrantesDe(GrupoFamiliar grupo) {
+        List<Persona> integrantes = new java.util.ArrayList<>(grupo.getIntegrantes());
+        Persona responsable = grupo.getResponsable();
+        if (responsable != null && integrantes.stream()
+                .noneMatch(integrante -> java.util.Objects.equals(integrante.getId(), responsable.getId()))) {
+            integrantes.add(responsable);
+        }
+        return integrantes;
+    }
+
+    private boolean esGrupoFamiliarValido(GrupoFamiliar grupo) {
+        if (grupo == null) return false;
+        Persona responsable = grupo.getResponsable();
+        if (responsable == null || !Boolean.TRUE.equals(responsable.getActivo())
+                || (responsable.getCategoria() != CategoriaPersona.SOCIO
+                && responsable.getCategoria() != CategoriaPersona.SOCIOYJUGADOR)) return false;
+        List<Persona> integrantes = integrantesDe(grupo);
+        return integrantes.size() >= 3
+                && integrantes.stream().allMatch(integrante -> Boolean.TRUE.equals(integrante.getActivo()));
+    }
+
+    private boolean cancelarCuotaIndividualPendiente(Persona socio, String periodo) {
+        Optional<CuotaSocial> cuotaOpt = cuotaSocialRepository
+                .findActivaBySocioAndPeriodo(socio.getId(), periodo);
+        if (cuotaOpt.isEmpty() || !"INDIVIDUAL".equals(cuotaOpt.get().getTipoCuota())) return false;
+
+        CuotaSocial cuota = cuotaOpt.get();
+        if ("PAGADA".equals(cuota.getEstado())) return true;
+        if ("PENDIENTE".equals(cuota.getEstado()) || "VENCIDA".equals(cuota.getEstado())) {
+            cuota.setEstado("CANCELADA");
+            cuotaSocialRepository.save(cuota);
+        }
+        return false;
+    }
+
+    private void cancelarCuotaFamiliarPendiente(GrupoFamiliar grupo, String periodo) {
+        Optional<CuotaSocial> cuotaOpt = cuotaSocialRepository
+                .findActivaByGrupoAndPeriodo(grupo.getId(), periodo);
+        if (cuotaOpt.isPresent() && ("PENDIENTE".equals(cuotaOpt.get().getEstado())
+                || "VENCIDA".equals(cuotaOpt.get().getEstado()))) {
+            cuotaOpt.get().setEstado("CANCELADA");
+            cuotaSocialRepository.save(cuotaOpt.get());
         }
     }
 

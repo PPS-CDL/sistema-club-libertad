@@ -1,5 +1,7 @@
 package com.club_libertad.models;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.math.BigDecimal;
@@ -21,6 +23,7 @@ public class CuotaSocial {
     @Column(name = "tipo_cuota", nullable = false)
     private String tipoCuota; // "INDIVIDUAL" o "FAMILIAR"
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "grupo_familiar_id")
     @JsonIgnoreProperties({"integrantes", "responsable"})
@@ -46,5 +49,11 @@ public class CuotaSocial {
 
 
     @Column(name = "pago_id")
-    private Long pagoId; 
+    private Long pagoId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pago_id", insertable = false, updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private Pago pago;
 }

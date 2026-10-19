@@ -16,7 +16,7 @@ import java.util.List;
     @Index(name = "idx_pago_fecha_pago", columnList = "fecha_pago")
 })
 @Data
-@EqualsAndHashCode(exclude = {"cuotas"})
+@EqualsAndHashCode(exclude = {"cuotas", "cuotasSociales"})
 @NoArgsConstructor
 public class Pago {
     @Id
@@ -56,7 +56,7 @@ public class Pago {
     }
     // Cuota social independiente
     @JsonIgnore
-    @OneToMany(mappedBy = "pagoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "pago", fetch = FetchType.LAZY)
     private List<CuotaSocial> cuotasSociales;
 
     @com.fasterxml.jackson.annotation.JsonProperty("cuotaSocialIds")
