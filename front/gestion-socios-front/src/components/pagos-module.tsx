@@ -45,6 +45,7 @@ import {
   Calendar,
   Search,
   ChevronsUpDown,
+  Building2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { toast } from "sonner@2.0.3";
@@ -58,6 +59,7 @@ import pagoService, {
 } from "../services/pagoService";
 import personaService from "../services/personaService";
 import deporteService from "../services/deporteService";
+import { configuracionService } from "../services/api";
 import type { Cuota } from "../types/cuota";
 import type { Persona } from "../types/persona";
 import type { Deporte } from "../types/deporte";
@@ -71,6 +73,7 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import cuotaSocialService from "../services/cuotaSocialService";
 
 const normalizarBusquedaDeporte = (texto: string) =>
   texto
@@ -78,6 +81,9 @@ const normalizarBusquedaDeporte = (texto: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("es")
     .trim();
+
+const obtenerClaveCuota = (cuota: Cuota) =>
+  cuota.esSocial ? `social:${cuota.idSocialReal}` : `deportiva:${cuota.id}`;
 
 const prorratearCuota = (c: any) => {
   const socialNominal = Number(c.cuotaSocial) || 0;
@@ -120,6 +126,12 @@ interface Pago {
   }[];
 }
 
+interface ConfiguracionClubData {
+  importeCuotaIndividual: number;
+  importeCuotaFamiliar: number;
+  fechaEfectiva: string | null;
+}
+
 interface PagosModuleProps {
   userRole: "admin" | "secretario";
 }
@@ -142,6 +154,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [filterSocioPago, setFilterSocioPago] = useState<string>("all");
   const [expandedPagos, setExpandedPagos] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("todos");
+
+  // Estado para la Configuración Global del Club
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracionClubData>({
+    importeCuotaIndividual: 0,
+    importeCuotaFamiliar: 0,
+    fechaEfectiva: null,
+  });
 
   const getFechaHoy = () => {
     const d = new Date();
@@ -263,23 +282,41 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     try {
       setLoading(true);
 
-      await cuotaService.actualizarCuotasVencidas();
-      await cuotaService.generarCuotasMesActual();
+      await cuotaService.actualizarCuotasVencidas().catch((error) => {
+        console.warn("No se pudieron actualizar los vencimientos:", error);
+      });
+      await cuotaService.generarCuotasMesActual().catch((error) => {
+        console.warn("No se pudieron generar las cuotas del mes:", error);
+      });
 
       const [
         cuotasRes,
+        cuotasSocialesRes,
         personasRes,
         deportesRes,
         pagosRes,
         ingresosPorSocioRes,
+        configRes,
       ] = await Promise.all([
         cuotaService.getAll(),
+        cuotaSocialService.getAll().catch((error) => {
+          console.error("No se pudieron cargar las cuotas sociales:", error);
+          toast.error("No se pudieron cargar las cuotas sociales");
+          return { data: [] };
+        }),
         personaService.getAll(),
         deporteService.getAll(),
         pagoService.getAll(),
         pagoService.getIngresosPorSocio(),
+        configuracionService.get().catch(() => ({ data: null })),
       ]);
-      const cuotasData = Array.isArray(cuotasRes.data) ? cuotasRes.data : [];
+      const cuotasDeportivasData = Array.isArray(cuotasRes.data)
+        ? cuotasRes.data
+        : [];
+      const cuotasSocialesData = Array.isArray(cuotasSocialesRes.data)
+        ? cuotasSocialesRes.data
+        : [];
+
       const personasData = Array.isArray(personasRes.data)
         ? personasRes.data
         : [];
@@ -287,14 +324,75 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         ? deportesRes.data
         : [];
       const pagosData = Array.isArray(pagosRes.data) ? pagosRes.data : [];
+      // Mapear cuotas sociales para que cumplan estrictamente con la interfaz Cuota
+      const cuotasSocialesTransformadas: Cuota[] = cuotasSocialesData.map(
+        (cs) => {
+          const personaIdVal =
+            typeof cs.socio === "object" && cs.socio !== null
+              ? cs.socio.id
+              : cs.socio;
 
-      setCuotas(cuotasData);
+          return {
+            id: `social-${cs.id}`,
+            idSocialReal: cs.id,
+            esSocial: true,
+            personaId: Number(personaIdVal) || 0,
+            deporteId: null,
+            monto: Number(cs.monto) || 0,
+            periodo: cs.periodo,
+            concepto: cs.concepto || `Cuota Social ${cs.tipoCuota}`,
+            estado:
+              cs.estado === "PAGADA"
+                ? "PAGADA"
+                : cs.estado === "VENCIDA"
+                  ? "VENCIDA"
+                  : cs.estado === "CANCELADA"
+                    ? "CANCELADA"
+                    : "PENDIENTE",
+            fechaGeneracion: cs.fechaGeneracion,
+            fechaVencimiento: cs.fechaVencimiento,
+            pagoId: cs.pagoId,
+            cuotaEntrenador: 0,
+            cuotaSeguro: 0,
+            cuotaSocial: Number(cs.monto) || 0,
+          };
+        },
+      );
+
+      // Unificar ambas listas con el tipo Cuota[]
+      const todasLasCuotasUnificadas: Cuota[] = [
+        ...cuotasDeportivasData,
+        ...cuotasSocialesTransformadas,
+      ];
+
+      setCuotas(todasLasCuotasUnificadas);
       setPersonas(personasData);
       setDeportes(deportesData);
       setPagosServidor(pagosData);
       setIngresosPorSocio(
         Array.isArray(ingresosPorSocioRes.data) ? ingresosPorSocioRes.data : [],
       );
+
+      if (configRes?.data) {
+        setConfigGlobal({
+          importeCuotaIndividual:
+            Number(
+              configRes.data.importeCuotaIndividual ??
+                configRes.data.montoCuotaIndividual ??
+                configRes.data.cuotaIndividual,
+            ) || 0,
+          importeCuotaFamiliar:
+            Number(
+              configRes.data.importeCuotaFamiliar ??
+                configRes.data.montoCuotaFamiliar ??
+                configRes.data.cuotaFamiliar,
+            ) || 0,
+          fechaEfectiva:
+            configRes.data.fechaEfectiva ??
+            configRes.data.fechaActualizacion ??
+            null,
+        });
+      }
 
       const personaMap = new Map<number, Persona>(
         personasData.map((p) => [Number(p.id), p] as const),
@@ -306,60 +404,68 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         pagosData.map((p: any) => [Number(p.id), p]),
       );
 
-      const pagosTransformados = cuotasData.map((cuota, idx) => {
-        const personaIdNum = Number(
-          typeof cuota.personaId === "object" && cuota.personaId !== null
-            ? (cuota.personaId as any).id
-            : cuota.personaId,
-        );
-        const deporteIdNum = Number(
-          typeof cuota.deporteId === "object" && cuota.deporteId !== null
-            ? (cuota.deporteId as any).id
-            : cuota.deporteId,
-        );
-        const pagoIdNum = cuota.pagoId
-          ? Number(
-              typeof cuota.pagoId === "object" && cuota.pagoId !== null
-                ? (cuota.pagoId as any).id
-                : cuota.pagoId,
-            )
-          : null;
+      const pagosTransformados = todasLasCuotasUnificadas
+        .filter((cuota) => cuota.estado !== "CANCELADA")
+        .map((cuota, idx) => {
+          const personaIdNum = Number(
+            typeof cuota.personaId === "object" && cuota.personaId !== null
+              ? (cuota.personaId as any).id
+              : cuota.personaId,
+          );
+          const deporteIdNum = cuota.deporteId
+            ? Number(
+                typeof cuota.deporteId === "object" && cuota.deporteId !== null
+                  ? (cuota.deporteId as any).id
+                  : cuota.deporteId,
+              )
+            : null;
+          const pagoIdNum = cuota.pagoId
+            ? Number(
+                typeof cuota.pagoId === "object" && cuota.pagoId !== null
+                  ? (cuota.pagoId as any).id
+                  : cuota.pagoId,
+              )
+            : null;
 
-        const p = personaMap.get(personaIdNum);
-        const d = deporteMap.get(deporteIdNum);
-        const pagoAsociado = pagoIdNum ? pagoMap.get(pagoIdNum) : undefined;
+          const p = personaMap.get(personaIdNum);
+          const d = deporteIdNum ? deporteMap.get(deporteIdNum) : null;
+          const pagoAsociado = pagoIdNum ? pagoMap.get(pagoIdNum) : undefined;
 
-        const metodoReal =
-          cuota.estado === "PAGADA"
-            ? pagoAsociado?.metodoPago || "TRANSFERENCIA"
-            : "—";
-        const fechaPagoReal =
-          cuota.estado === "PAGADA"
-            ? pagoAsociado?.fechaPago || cuota.fechaGeneracion || ""
-            : "";
-
-        return {
-          id: (cuota.id || idx).toString(),
-          socio: p ? `${p.nombre} ${p.apellido}` : `Persona ${cuota.personaId}`,
-          socioDNI: p?.dni || "",
-          monto: cuota.monto,
-          fecha: fechaPagoReal,
-          mes: getMesAno(cuota.periodo),
-          metodoPago: metodoReal,
-          estado:
+          const metodoReal =
             cuota.estado === "PAGADA"
-              ? "pagado"
-              : cuota.estado === "VENCIDA"
-                ? "vencido"
-                : "pendiente",
-          conceptos: [
-            {
-              concepto: cuota.concepto || `${d?.nombre || "Cuota"}`,
-              monto: cuota.monto,
-            },
-          ],
-        } as Pago;
-      });
+              ? pagoAsociado?.metodoPago || "TRANSFERENCIA"
+              : "—";
+          const fechaPagoReal =
+            cuota.estado === "PAGADA"
+              ? pagoAsociado?.fechaPago || cuota.fechaGeneracion || ""
+              : "";
+
+          return {
+            id: (cuota.id || idx).toString(),
+            socio: p
+              ? `${p.nombre} ${p.apellido}`
+              : `Persona ${cuota.personaId}`,
+            socioDNI: p?.dni || "",
+            monto: cuota.monto,
+            fecha: fechaPagoReal,
+            mes: getMesAno(cuota.periodo),
+            metodoPago: metodoReal,
+            estado:
+              cuota.estado === "PAGADA"
+                ? "pagado"
+                : cuota.estado === "VENCIDA"
+                  ? "vencido"
+                  : cuota.estado === "CANCELADA"
+                    ? "cancelado"
+                    : "pendiente",
+            conceptos: [
+              {
+                concepto: cuota.concepto || d?.nombre || "Cuota Social",
+                monto: cuota.monto,
+              },
+            ],
+          } as Pago;
+        });
 
       setPagos(pagosTransformados);
     } catch (error) {
@@ -374,13 +480,20 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     cargarCuotas();
   }, [cargarCuotas]);
 
+  // Estados y funciones para el registro de pagos
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedSocio, setSelectedSocio] = useState("");
-  const [selectedCuotas, setSelectedCuotas] = useState<number[]>([]);
+  const [selectedCuotas, setSelectedCuotas] = useState<string[]>([]);
   const [metodoPago, setMetodoPago] = useState<
     "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO"
   >("EFECTIVO");
   const [observaciones, setObservaciones] = useState("");
+
+  // Obtiene datos del socio seleccionado actualmente
+  const socioSeleccionadoObj = useMemo(() => {
+    if (!selectedSocio) return null;
+    return personas.find((p) => String(p.id) === String(selectedSocio)) || null;
+  }, [selectedSocio, personas]);
 
   const handleRegistrarPago = async () => {
     if (!selectedSocio || selectedCuotas.length === 0) {
@@ -388,9 +501,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return;
     }
 
-    const cuotasSeleccionadas = cuotas.filter((c) =>
-      selectedCuotas.includes(Number(c.id)),
+    const cuotasSeleccionadas = cuotas.filter((cuota) =>
+      selectedCuotas.includes(obtenerClaveCuota(cuota)),
     );
+    const cuotaIdsDeportivas: number[] = [];
+    const cuotaSocialIds: number[] = [];
+
+    cuotasSeleccionadas.forEach((c) => {
+      if (c.esSocial && c.idSocialReal) {
+        cuotaSocialIds.push(c.idSocialReal);
+      } else if (typeof c.id === "number") {
+        cuotaIdsDeportivas.push(c.id);
+      } else if (typeof c.id === "string") {
+        const parsed = parseInt(c.id, 10);
+        if (!isNaN(parsed)) cuotaIdsDeportivas.push(parsed);
+      }
+    });
     const montoOriginal = cuotasSeleccionadas.reduce(
       (sum, c) => sum + (c.monto || 0),
       0,
@@ -416,7 +542,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         montoTotal: montoOriginal,
         metodoPago,
         observaciones: observaciones.trim() || undefined,
-        cuotaIds: selectedCuotas,
+        cuotaIds: cuotaIdsDeportivas,
+        cuotaSocialIds,
       });
 
       toast.success("Pago registrado correctamente");
@@ -713,6 +840,46 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         };
       },
     );
+
+    if (filterDeporteResumen === "all") {
+      const cuotasSocialesDelMes = cuotasDelMes.filter(
+        (cuota) => cuota.esSocial && cuota.estado !== "CANCELADA",
+      );
+      const pagadasSociales = cuotasSocialesDelMes.filter(
+        (cuota) => cuota.estado === "PAGADA",
+      );
+      const adeudadasSociales = cuotasSocialesDelMes.filter(
+        (cuota) => cuota.estado === "PENDIENTE" || cuota.estado === "VENCIDA",
+      );
+      const totalSocialCobrado = pagadasSociales.reduce(
+        (total, cuota) => total + (Number(cuota.monto) || 0),
+        0,
+      );
+      const totalSocialAdeudado = adeudadasSociales.reduce(
+        (total, cuota) => total + (Number(cuota.monto) || 0),
+        0,
+      );
+
+      if (cuotasSocialesDelMes.length > 0) {
+        resultado.push({
+          deporteId: 0,
+          nombreDeporte: "Cuota Social",
+          sociosAlDia: new Set(pagadasSociales.map((cuota) => cuota.personaId))
+            .size,
+          sociosDeudores: new Set(
+            adeudadasSociales.map((cuota) => cuota.personaId),
+          ).size,
+          totalCobrado: totalSocialCobrado,
+          totalAdeudado: totalSocialAdeudado,
+          cobradoSocial: totalSocialCobrado,
+          cobradoEntrenador: 0,
+          cobradoSeguro: 0,
+          adeudadoSocial: totalSocialAdeudado,
+          adeudadoEntrenador: 0,
+          adeudadoSeguro: 0,
+        });
+      }
+    }
 
     setResumenMensual(resultado);
   }, [anioResumen, mesResumen, filterDeporteResumen, cuotas, deportes]);
@@ -1063,7 +1230,12 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       .reduce((sum, p) => sum + p.monto, 0),
   };
 
-  if (loading) return <div>Cargando cuotas...</div>;
+  if (loading)
+    return (
+      <div className="p-6 text-center text-gray-500">
+        Cargando cuotas y configuración...
+      </div>
+    );
 
   const getEstadoBadge = (estado: string) => {
     const variants = {
@@ -1199,6 +1371,36 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {/* Banner de valores vigentes de configuración */}
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-800 space-y-1">
+                      <div className="font-semibold flex items-center gap-1.5 text-blue-900">
+                        <Building2 className="w-4 h-4" />
+                        Valores Base de Cuota Social Configurados:
+                      </div>
+                      <div className="flex justify-between pt-1">
+                        <span>
+                          • Cuota Individual:{" "}
+                          <strong>
+                            $
+                            {configGlobal.importeCuotaIndividual.toLocaleString()}
+                          </strong>
+                        </span>
+                        <span>
+                          • Cuota Familiar:{" "}
+                          <strong>
+                            $
+                            {configGlobal.importeCuotaFamiliar.toLocaleString()}
+                          </strong>
+                        </span>
+                      </div>
+                      {configGlobal.fechaEfectiva && (
+                        <p className="text-[11px] text-blue-600 italic">
+                          Transición efectiva desde:{" "}
+                          {configGlobal.fechaEfectiva}
+                        </p>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Socio *</Label>
@@ -1263,45 +1465,54 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           .filter(
                             (c) =>
                               selectedSocio &&
-                              Number(c.personaId) === Number(selectedSocio) &&
-                              c.estado !== "PAGADA",
+                              Number(
+                                typeof c.personaId === "object" &&
+                                  c.personaId !== null
+                                  ? (c.personaId as any).id
+                                  : c.personaId,
+                              ) === Number(selectedSocio) &&
+                              c.estado !== "PAGADA" &&
+                              c.estado !== "CANCELADA",
                           )
                           .map((cuota) => {
-                            const deporte = deportes.find(
-                              (d) => Number(d.id) === Number(cuota.deporteId),
-                            );
-                            const checked = selectedCuotas.includes(
-                              Number(cuota.id),
-                            );
+                            const cuotaKey = obtenerClaveCuota(cuota);
+                            const checked = selectedCuotas.includes(cuotaKey);
+                            const deporte = cuota.deporteId
+                              ? deportes.find(
+                                  (d) =>
+                                    Number(d.id) === Number(cuota.deporteId),
+                                )
+                              : null;
                             return (
                               <div
-                                key={cuota.id}
+                                key={cuotaKey}
                                 className="flex items-center gap-3 p-3"
                               >
                                 <Checkbox
-                                  id={`cuota-${cuota.id}`}
+                                  id={`cuota-${cuotaKey}`}
                                   checked={checked}
                                   onCheckedChange={(val) => {
                                     if (val) {
-                                      setSelectedCuotas((prev) => [
-                                        ...prev,
-                                        Number(cuota.id),
-                                      ]);
+                                      setSelectedCuotas((prev) =>
+                                        prev.includes(cuotaKey)
+                                          ? prev
+                                          : [...prev, cuotaKey],
+                                      );
                                     } else {
                                       setSelectedCuotas((prev) =>
-                                        prev.filter(
-                                          (id) => id !== Number(cuota.id),
-                                        ),
+                                        prev.filter((id) => id !== cuotaKey),
                                       );
                                     }
                                   }}
                                 />
                                 <label
-                                  htmlFor={`cuota-${cuota.id}`}
+                                  htmlFor={`cuota-${cuotaKey}`}
                                   className="flex-1 cursor-pointer"
                                 >
                                   <div className="font-medium flex items-center gap-2">
-                                    {deporte?.nombre || "Cuota"}
+                                    {cuota.concepto ||
+                                      deporte?.nombre ||
+                                      "Cuota Social"}
                                     <Badge
                                       variant="outline"
                                       className="text-xs"
@@ -1323,7 +1534,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           cuotas.filter(
                             (c) =>
                               Number(c.personaId) === Number(selectedSocio) &&
-                              c.estado !== "PAGADA",
+                              c.estado !== "PAGADA" &&
+                              c.estado !== "CANCELADA",
                           ).length === 0 && (
                             <div className="p-3 text-sm text-gray-500">
                               No hay cuotas pendientes para este socio
@@ -1337,11 +1549,11 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       </div>
                       <div className="flex justify-between text-sm text-gray-700">
                         <span>Total seleccionado:</span>
-                        <span className="font-semibold">
+                        <span className="font-semibold text-base">
                           $
                           {cuotas
-                            .filter((c) =>
-                              selectedCuotas.includes(Number(c.id)),
+                            .filter((cuota) =>
+                              selectedCuotas.includes(obtenerClaveCuota(cuota)),
                             )
                             .reduce((sum, c) => sum + (c.monto || 0), 0)
                             .toLocaleString()}
@@ -1631,7 +1843,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           const cuotasDePago = cuotas.filter(
                             (c) => Number(c.pagoId) === Number(pago.id),
                           );
-                          const deportesNombres = cuotasDePago
+                          const cuotasDeportivasDePago = cuotasDePago.filter(
+                            (c) => !c.esSocial,
+                          );
+                          const cuotasSocialesDePago = cuotasDePago.filter(
+                            (c) => c.esSocial,
+                          );
+                          const deportesNombres = cuotasDeportivasDePago
                             .map((c) => {
                               const deporte = deportes.find(
                                 (d) => Number(d.id) === Number(c.deporteId),
@@ -1639,43 +1857,59 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               return deporte?.nombre || "Deporte desconocido";
                             })
                             .join(", ");
+                          const conceptosPago = [
+                            deportesNombres,
+                            cuotasSocialesDePago.length > 0
+                              ? "Cuota social independiente"
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(", ");
+                          const totalSocialIndependiente =
+                            cuotasSocialesDePago.reduce(
+                              (total, cuota) => total + (cuota.monto || 0),
+                              0,
+                            );
                           const isExpanded = expandedPagos.has(String(pago.id));
-                          const desglosePorDeporte = cuotasDePago.reduce(
-                            (acc, cuota) => {
-                              const deporteId = Number(cuota.deporteId);
-                              if (!acc[deporteId]) {
-                                const deporte = deportes.find(
-                                  (d) => Number(d.id) === deporteId,
-                                );
-                                acc[deporteId] = {
-                                  nombre:
-                                    deporte?.nombre || "Deporte desconocido",
-                                  entrenador: 0,
-                                  seguro: 0,
-                                  social: 0,
-                                };
-                              }
-                              acc[deporteId].entrenador +=
-                                cuota.cuotaEntrenador || 0;
-                              acc[deporteId].seguro += cuota.cuotaSeguro || 0;
-                              acc[deporteId].social += cuota.cuotaSocial || 0;
-                              return acc;
-                            },
-                            {} as Record<
-                              number,
-                              {
-                                nombre: string;
-                                entrenador: number;
-                                seguro: number;
-                                social: number;
-                              }
-                            >,
-                          );
+                          const desglosePorDeporte =
+                            cuotasDeportivasDePago.reduce(
+                              (acc, cuota) => {
+                                const deporteId = Number(cuota.deporteId);
+                                if (!acc[deporteId]) {
+                                  const deporte = deportes.find(
+                                    (d) => Number(d.id) === deporteId,
+                                  );
+                                  acc[deporteId] = {
+                                    nombre:
+                                      deporte?.nombre || "Deporte desconocido",
+                                    entrenador: 0,
+                                    seguro: 0,
+                                    social: 0,
+                                  };
+                                }
+                                acc[deporteId].entrenador +=
+                                  cuota.cuotaEntrenador || 0;
+                                acc[deporteId].seguro += cuota.cuotaSeguro || 0;
+                                acc[deporteId].social += cuota.cuotaSocial || 0;
+                                return acc;
+                              },
+                              {} as Record<
+                                number,
+                                {
+                                  nombre: string;
+                                  entrenador: number;
+                                  seguro: number;
+                                  social: number;
+                                }
+                              >,
+                            );
                           const desgloseArray =
                             Object.values(desglosePorDeporte);
-                          const hasConceptos = desgloseArray.some(
-                            (d) => d.entrenador || d.seguro || d.social,
-                          );
+                          const hasConceptos =
+                            totalSocialIndependiente > 0 ||
+                            desgloseArray.some(
+                              (d) => d.entrenador || d.seguro || d.social,
+                            );
 
                           return (
                             <>
@@ -1701,7 +1935,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                     : "—"}
                                 </TableCell>
                                 <TableCell>{socio?.dni || "—"}</TableCell>
-                                <TableCell>{deportesNombres || "—"}</TableCell>
+                                <TableCell>{conceptosPago || "—"}</TableCell>
                                 <TableCell>
                                   ${(pago.montoTotal || 0).toLocaleString()}
                                 </TableCell>
@@ -1766,6 +2000,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                             </div>
                                           </div>
                                         ))}
+                                        {totalSocialIndependiente > 0 && (
+                                          <div className="rounded border bg-white p-3">
+                                            <div className="font-medium text-gray-700 mb-2">
+                                              Cuota Social Independiente
+                                            </div>
+                                            <div className="text-sm flex items-center gap-2">
+                                              <span className="text-gray-600">
+                                                Social:
+                                              </span>
+                                              <span className="font-semibold">
+                                                $
+                                                {totalSocialIndependiente.toLocaleString()}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                       {pago.montoTotal !==
                                         pago.cuotaEntrenador +
