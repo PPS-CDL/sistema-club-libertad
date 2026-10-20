@@ -1561,9 +1561,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </TableRow>
                     ) : (
                       filteredSocios.map((socio) => (
-                        <>
+                        <Fragment key={socio.id}>
                           <TableRow
-                            key={socio.id}
                             onClick={() => toggleExpandSocio(socio.id)}
                             className="cursor-pointer hover:bg-muted/50"
                           >
@@ -1584,8 +1583,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 <div>{socio.dni}</div>
                                 {socio.responsablePago && (
                                   <div className="text-sm text-gray-400">
-                                    DNI responsable:{" "}
-                                    {socio.responsableDni || "-"}
+                                    DNI responsable: {socio.responsableDni || "-"}
                                   </div>
                                 )}
                               </div>
@@ -1606,28 +1604,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 <div className="text-gray-500">
                                   {socio?.email || "Sin email"}
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {getDeportesNombres(socio.deportesIds).length >
-                                0 ? (
-                                  getDeportesNombres(socio.deportesIds).map(
-                                    (deporte, idx) => (
-                                      <Badge
-                                        key={idx}
-                                        variant="secondary"
-                                        className="text-xs"
-                                      >
-                                        {deporte}
-                                      </Badge>
-                                    ),
-                                  )
-                                ) : (
-                                  <span className="text-sm text-gray-400">
-                                    Sin deportes
-                                  </span>
-                                )}
                               </div>
                             </TableCell>
                             <TableCell>
@@ -1753,7 +1729,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       ))
                     )}
                   </TableBody>
