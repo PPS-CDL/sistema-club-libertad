@@ -8,6 +8,16 @@ const api = axios.create({
   },
 });
 
+export interface ConfiguracionClubDTO {
+  importeCuotaIndividual: number;
+  importeCuotaFamiliar: number;
+  fechaEfectiva: string | null; // Formato "YYYY-MM-DD"
+}
+export const configuracionService = {
+  get: () => api.get("/configuracion"),
+  update: (data: ConfiguracionClubDTO) => api.put("/configuracion", data),
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("authToken");
   if (token) {

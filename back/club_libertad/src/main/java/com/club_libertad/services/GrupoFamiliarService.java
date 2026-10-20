@@ -15,10 +15,16 @@ import java.util.stream.Collectors;
 public class GrupoFamiliarService {
     private final GrupoFamiliarRepository grupoFamiliarRepository;
     private final PersonaRepository personaRepository;
+    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
+    private final CuotaSocialService cuotaSocialService;
 
-    public GrupoFamiliarService(GrupoFamiliarRepository grupoFamiliarRepository, PersonaRepository personaRepository) {
+    public GrupoFamiliarService(GrupoFamiliarRepository grupoFamiliarRepository, PersonaRepository personaRepository,
+                                com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository,
+                                CuotaSocialService cuotaSocialService) {
         this.grupoFamiliarRepository = grupoFamiliarRepository;
         this.personaRepository = personaRepository;
+        this.cuotaSocialRepository = cuotaSocialRepository;
+        this.cuotaSocialService = cuotaSocialService;
     }
 
     @Transactional(readOnly = true)
@@ -43,8 +49,8 @@ public class GrupoFamiliarService {
         Set<Persona> todosLosMiembros = integrantes.stream().collect(Collectors.toSet());
         todosLosMiembros.add(responsable);
 
-        if (todosLosMiembros.size() < 3 || todosLosMiembros.size() > 8) {
-            throw new RuntimeException("El grupo familiar debe tener un mínimo de 3 y un máximo de 8 personas diferentes.");
+        if (todosLosMiembros.size() < 3  || todosLosMiembros.size() > 8) {
+            throw new RuntimeException("El grupo familiar debe tener un mínimo de 3 personas diferentes y un máximo de 8.");
         }
 
         for (Persona p : todosLosMiembros) {
@@ -66,6 +72,7 @@ public class GrupoFamiliarService {
             p.setGrupoFamiliar(savedGrupo);
             personaRepository.save(p);
         }
+        cuotaSocialService.sincronizarCuotasSocialesMesActual();
         return savedGrupo;
     }
 // Actualiza un grupo familiar existente. 
@@ -83,8 +90,16 @@ public class GrupoFamiliarService {
         Set<Persona> todosLosMiembros = nuevosIntegrantes.stream().collect(Collectors.toSet());
         todosLosMiembros.add(nuevoResponsable);
 
-        if (todosLosMiembros.size() < 3 || todosLosMiembros.size() > 8) {
-            throw new RuntimeException("El grupo familiar debe tener un mínimo de 3 y un máximo de 8 personas diferentes.");
+        Set<Long> miembrosAnterioresIds = grupo.getIntegrantes().stream()
+            .map(Persona::getId).collect(Collectors.toSet());
+        if (grupo.getResponsable() != null) miembrosAnterioresIds.add(grupo.getResponsable().getId());
+        Set<Long> miembrosNuevosIds = todosLosMiembros.stream()
+            .map(Persona::getId).collect(Collectors.toSet());
+        cuotaSocialService.prepararCambioIntegrantesGrupo(
+            id, !miembrosAnterioresIds.equals(miembrosNuevosIds));
+
+        if (todosLosMiembros.size() < 3  || todosLosMiembros.size() > 8) {
+            throw new RuntimeException("El grupo familiar debe tener un mínimo de 3 personas diferentes y un máximo de 8.");
         }
 
         for (Persona p : todosLosMiembros) {
@@ -116,13 +131,18 @@ public class GrupoFamiliarService {
             personaRepository.save(p);
         }
 
-        return grupoFamiliarRepository.save(grupo);
+        GrupoFamiliar grupoActualizado = grupoFamiliarRepository.save(grupo);
+        cuotaSocialService.sincronizarCuotasSocialesMesActual();
+        return grupoActualizado;
     }
 // Funcion para eliminar un grupo familiar. 
     @Transactional
     public void deleteGrupo(Long id) {
         GrupoFamiliar grupo = grupoFamiliarRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Grupo no encontrado."));
+
+        boolean tieneCuotasHistoricas = cuotaSocialRepository.existsByGrupoFamiliar_Id(id);
+        cuotaSocialService.prepararCambioIntegrantesGrupo(id, true);
         
         if (grupo.getResponsable() != null) {
             grupo.getResponsable().setGrupoFamiliar(null);
@@ -132,7 +152,14 @@ public class GrupoFamiliarService {
             p.setGrupoFamiliar(null);
             personaRepository.save(p);
         }
+        if (tieneCuotasHistoricas) {
+            grupo.setResponsable(null);
+            cuotaSocialService.sincronizarCuotasSocialesMesActual();
+            return;
+        }
         grupoFamiliarRepository.delete(grupo);
+        grupoFamiliarRepository.delete(grupo);
+        cuotaSocialService.sincronizarCuotasSocialesMesActual();
     }
 
     private void validarResponsable(Persona responsable, Long grupoIdActual) {

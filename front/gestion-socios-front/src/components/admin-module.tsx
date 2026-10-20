@@ -1,43 +1,79 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Badge } from './ui/badge';
-import { Shield, UserPlus, Download, Database, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { Progress } from './ui/progress';
-import { toast } from 'sonner@2.0.3';
-import backupService, { BackupInfo } from '../services/backupService';
-import usuarioService from '../services/usuarioService';
-import personaService from '../services/personaService';
-import deporteService from '../services/deporteService';
-import { Usuario as UsuarioApi } from '../types/usuario';
-import api from '../services/api';
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { Badge } from "./ui/badge";
+import {
+  Shield,
+  UserPlus,
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  Download,
+  Settings,
+  Save,
+  RotateCcw,
+} from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Progress } from "./ui/progress";
+import { toast } from "sonner@2.0.3";
+import backupService, { BackupInfo } from "../services/backupService";
+import usuarioService from "../services/usuarioService";
+import personaService from "../services/personaService";
+import deporteService from "../services/deporteService";
+import { Usuario as UsuarioApi } from "../types/usuario";
+import api, { configuracionService } from "../services/api";
 
 interface Usuario {
   id: number;
   nombre: string;
   email?: string | null;
-  rol: 'admin' | 'secretario';
-  estado: 'activo' | 'inactivo';
+  rol: "admin" | "secretario";
+  estado: "activo" | "inactivo";
   ultimoAcceso: string;
 }
 
 interface FormUsuario {
   nombre: string;
   email: string;
-  rol: 'admin' | 'secretario';
+  rol: "admin" | "secretario";
 }
 
 interface UsuarioCreado {
   id: number;
   username: string;
   email: string;
-  role: 'ADMIN' | 'SECRETARIO';
+  role: "ADMIN" | "SECRETARIO";
   passwordTemporal: string;
 }
 
@@ -45,34 +81,90 @@ interface BackupRow {
   fileName: string;
   createdAt: string;
   size: string;
-  estado: 'completado' | 'en_proceso' | 'fallido';
+  estado: "completado" | "en_proceso" | "fallido";
+}
+
+interface ConfiguracionClubData {
+  importeCuotaIndividual: number;
+  importeCuotaFamiliar: number;
+  fechaEfectiva: string;
 }
 
 export function AdminModule() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-
   const [backups, setBackups] = useState<BackupRow[]>([]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<FormUsuario>({
-    nombre: '',
-    email: '',
-    rol: 'secretario',
+    nombre: "",
+    email: "",
+    rol: "secretario",
   });
   const [backupProgress, setBackupProgress] = useState(0);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [restoringFile, setRestoringFile] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<UsuarioCreado | null>(null);
   const [isCreatedDialogOpen, setIsCreatedDialogOpen] = useState(false);
-  const [userFormErrors, setUserFormErrors] = useState<{ nombre?: string; email?: string }>({});
+  const [userFormErrors, setUserFormErrors] = useState<{
+    nombre?: string;
+    email?: string;
+  }>({});
   const [isDeleteUserDialogOpen, setIsDeleteUserDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<Usuario | null>(null);
   const [totalSocios, setTotalSocios] = useState(0);
   const [totalDeportes, setTotalDeportes] = useState(0);
 
+  const [config, setConfig] = useState<ConfiguracionClubData>({
+    importeCuotaIndividual: 0,
+    importeCuotaFamiliar: 0,
+    fechaEfectiva: "",
+  });
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const cargarConfiguracion = async () => {
+    try {
+      setLoadingConfig(true);
+      const res = await configuracionService.get();
+      if (res?.data) {
+        setConfig({
+          importeCuotaIndividual: Number(res.data.importeCuotaIndividual) || 0,
+          importeCuotaFamiliar: Number(res.data.importeCuotaFamiliar) || 0,
+          fechaEfectiva: res.data.fechaEfectiva || "",
+        });
+      }
+    } catch (error) {
+      console.error("Error al cargar la configuración:", error);
+      toast.error("No se pudo cargar la configuración del sistema");
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+  const handleGuardarConfiguracion = async () => {
+    try {
+      setSavingConfig(true);
+      await configuracionService.update({
+        importeCuotaIndividual: config.importeCuotaIndividual,
+        importeCuotaFamiliar: config.importeCuotaFamiliar,
+        fechaEfectiva: config.fechaEfectiva || null,
+      });
+      toast.success("Configuración guardada correctamente");
+      await cargarConfiguracion();
+    } catch (error: any) {
+      console.error("Error al guardar la configuración:", error);
+      const backendMessage = error?.response?.data;
+      if (typeof backendMessage === "string") {
+        toast.error(backendMessage); // Muestra la validación exacta del backend
+      } else {
+        toast.error("Error al guardar la configuración");
+      }
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const handleCrearUsuario = async () => {
     if (!formData.nombre.trim() || !formData.email.trim()) {
-      toast.error('Completa usuario y email');
+      toast.error("Completa usuario y email");
       return;
     }
     setUserFormErrors({});
@@ -80,37 +172,42 @@ export function AdminModule() {
       const res = await usuarioService.create({
         username: formData.nombre.trim(),
         email: formData.email.trim(),
-        role: formData.rol === 'admin' ? 'ADMIN' : 'SECRETARIO',
+        role: formData.rol === "admin" ? "ADMIN" : "SECRETARIO",
       });
       setCreatedUser(res.data as UsuarioCreado);
       setIsCreatedDialogOpen(true);
-      toast.success('Usuario creado correctamente');
+      toast.success("Usuario creado correctamente");
       setIsDialogOpen(false);
-      setFormData({ nombre: '', email: '', rol: 'secretario' });
+      setFormData({ nombre: "", email: "", rol: "secretario" });
       await cargarUsuarios();
     } catch (error) {
-      console.error('Error al crear usuario:', error);
+      console.error("Error al crear usuario:", error);
       const message = (error as any)?.response?.data;
-      if (typeof message === 'string') {
+      if (typeof message === "string") {
         const lower = message.toLowerCase();
         setUserFormErrors({
-          nombre: lower.includes('usuario') ? 'Ya hay un usuario registrado con este nombre' : undefined,
-          email: lower.includes('correo') || lower.includes('email') ? 'Ya hay un usuario registrado con este correo' : undefined,
+          nombre: lower.includes("usuario")
+            ? "Ya hay un usuario registrado con este nombre"
+            : undefined,
+          email:
+            lower.includes("correo") || lower.includes("email")
+              ? "Ya hay un usuario registrado con este correo"
+              : undefined,
         });
         return;
       }
-      toast.error('No se pudo crear el usuario');
+      toast.error("No se pudo crear el usuario");
     }
   };
 
   const handleCambiarEstado = async (id: number) => {
     try {
       await usuarioService.toggleEstado(id);
-      toast.success('Estado actualizado');
+      toast.success("Estado actualizado");
       await cargarUsuarios();
     } catch (error) {
-      console.error('Error al actualizar estado:', error);
-      toast.error('No se pudo actualizar el estado');
+      console.error("Error al actualizar estado:", error);
+      toast.error("No se pudo actualizar el estado");
     }
   };
 
@@ -123,13 +220,13 @@ export function AdminModule() {
     if (!userToDelete) return;
     try {
       await usuarioService.delete(userToDelete.id);
-      toast.success('Usuario eliminado correctamente');
+      toast.success("Usuario eliminado correctamente");
       setIsDeleteUserDialogOpen(false);
       setUserToDelete(null);
       await cargarUsuarios();
     } catch (error) {
-      console.error('Error al eliminar usuario:', error);
-      toast.error('No se pudo eliminar el usuario');
+      console.error("Error al eliminar usuario:", error);
+      toast.error("No se pudo eliminar el usuario");
     }
   };
 
@@ -137,18 +234,20 @@ export function AdminModule() {
     try {
       const res = await usuarioService.getAll();
       const data = Array.isArray(res.data) ? res.data : [];
-      const mapped: Usuario[] = (data as UsuarioApi[]).map(u => ({
+      const mapped: Usuario[] = (data as UsuarioApi[]).map((u) => ({
         id: u.id,
         nombre: u.username,
         email: u.email ?? null,
-        rol: u.role.toLowerCase() as 'admin' | 'secretario',
-        estado: u.activo ? 'activo' : 'inactivo',
-        ultimoAcceso: u.ultimoAcceso ? new Date(u.ultimoAcceso).toLocaleString() : '-',
+        rol: u.role.toLowerCase() as "admin" | "secretario",
+        estado: u.activo ? "activo" : "inactivo",
+        ultimoAcceso: u.ultimoAcceso
+          ? new Date(u.ultimoAcceso).toLocaleString()
+          : "-",
       }));
       setUsuarios(mapped);
     } catch (error) {
-      console.error('Error al cargar usuarios:', error);
-      toast.error('No se pudieron cargar los usuarios');
+      console.error("Error al cargar usuarios:", error);
+      toast.error("No se pudieron cargar los usuarios");
     }
   };
 
@@ -158,13 +257,13 @@ export function AdminModule() {
       const data = Array.isArray(res.data) ? res.data : [];
       const rows: BackupRow[] = data.map((b: BackupInfo) => ({
         fileName: b.fileName,
-        createdAt: b.createdAt?.split(' ')[0] || b.createdAt,
+        createdAt: b.createdAt?.split(" ")[0] || b.createdAt,
         size: `${(b.sizeBytes / (1024 * 1024)).toFixed(1)} MB`,
-        estado: 'completado',
+        estado: "completado",
       }));
       setBackups(rows);
     } catch (error) {
-      console.error('Error al cargar backups:', error);
+      console.error("Error al cargar backups:", error);
     }
   };
 
@@ -179,7 +278,7 @@ export function AdminModule() {
       setTotalSocios(personas.length);
       setTotalDeportes(deportes.length);
     } catch (error) {
-      console.error('Error al cargar estadísticas:', error);
+      console.error("Error al cargar estadísticas:", error);
     }
   };
 
@@ -187,6 +286,7 @@ export function AdminModule() {
     cargarBackups();
     cargarUsuarios();
     cargarEstadisticas();
+    cargarConfiguracion();
   }, []);
 
   const handleCrearBackup = async () => {
@@ -196,47 +296,49 @@ export function AdminModule() {
       await backupService.create();
       setBackupProgress(100);
       setIsBackingUp(false);
-      toast.success('Backup creado correctamente');
+      toast.success("Backup creado correctamente");
       cargarBackups();
     } catch (error) {
       setIsBackingUp(false);
-      toast.error('Error al crear backup');
+      toast.error("Error al crear backup");
       console.error(error);
     }
   };
 
   const handleDescargarBackup = async (backup: BackupRow) => {
     try {
-      const baseUrl = api.defaults.baseURL || 'http://localhost:8080';
+      const baseUrl = api.defaults.baseURL || "http://localhost:8080";
       const url = `${baseUrl}${backupService.downloadUrl(backup.fileName)}`;
-      const resp = await fetch(url, { method: 'GET' });
+      const resp = await fetch(url, { method: "GET" });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
       const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = objectUrl;
       a.download = backup.fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(objectUrl);
-      toast.success('Descarga iniciada');
+      toast.success("Descarga iniciada");
     } catch (error) {
-      console.error('Error al descargar backup:', error);
-      toast.error('No se pudo descargar el backup');
+      console.error("Error al descargar backup:", error);
+      toast.error("No se pudo descargar el backup");
     }
   };
 
   const handleRestaurarBackup = async (backup: BackupRow) => {
-    const confirmed = confirm('¿Está seguro que desea restaurar este backup? Se perderán los datos actuales.');
+    const confirmed = confirm(
+      "¿Está seguro que desea restaurar este backup? Se perderán los datos actuales.",
+    );
     if (!confirmed) return;
     try {
       setRestoringFile(backup.fileName);
       await backupService.restore(backup.fileName);
-      toast.success('Backup restaurado correctamente');
+      toast.success("Backup restaurado correctamente");
     } catch (error) {
-      console.error('Error al restaurar backup:', error);
-      toast.error('No se pudo restaurar el backup');
+      console.error("Error al restaurar backup:", error);
+      toast.error("No se pudo restaurar el backup");
     } finally {
       setRestoringFile(null);
     }
@@ -248,12 +350,12 @@ export function AdminModule() {
     if (now >= next) {
       next = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0);
     }
-    return next.toLocaleString('es-ES', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return next.toLocaleString("es-ES", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -263,7 +365,9 @@ export function AdminModule() {
         <Shield className="h-4 w-4" />
         <AlertTitle>Panel de Administración</AlertTitle>
         <AlertDescription>
-          Este módulo solo está disponible para usuarios con rol de Administrador. Tenga cuidado al realizar cambios en la configuración del sistema.
+          Este módulo solo está disponible para usuarios con rol de
+          Administrador. Tenga cuidado al realizar cambios en la configuración
+          del sistema.
         </AlertDescription>
       </Alert>
 
@@ -273,7 +377,9 @@ export function AdminModule() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle>Gestión de Usuarios</CardTitle>
-              <CardDescription>Administrar usuarios y permisos del sistema</CardDescription>
+              <CardDescription>
+                Administrar usuarios y permisos del sistema
+              </CardDescription>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
@@ -298,12 +404,17 @@ export function AdminModule() {
                       onChange={(e) => {
                         setFormData({ ...formData, nombre: e.target.value });
                         if (userFormErrors.nombre) {
-                          setUserFormErrors(prev => ({ ...prev, nombre: undefined }));
+                          setUserFormErrors((prev) => ({
+                            ...prev,
+                            nombre: undefined,
+                          }));
                         }
                       }}
                     />
                     {userFormErrors.nombre && (
-                      <p className="text-xs text-red-600">{userFormErrors.nombre}</p>
+                      <p className="text-xs text-red-600">
+                        {userFormErrors.nombre}
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -315,19 +426,26 @@ export function AdminModule() {
                       onChange={(e) => {
                         setFormData({ ...formData, email: e.target.value });
                         if (userFormErrors.email) {
-                          setUserFormErrors(prev => ({ ...prev, email: undefined }));
+                          setUserFormErrors((prev) => ({
+                            ...prev,
+                            email: undefined,
+                          }));
                         }
                       }}
                     />
                     {userFormErrors.email && (
-                      <p className="text-xs text-red-600">{userFormErrors.email}</p>
+                      <p className="text-xs text-red-600">
+                        {userFormErrors.email}
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="rol">Rol *</Label>
                     <Select
                       value={formData.rol}
-                      onValueChange={(value) => setFormData({ ...formData, rol: value as any })}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, rol: value as any })
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -338,42 +456,57 @@ export function AdminModule() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-gray-500">
-                      • Administrador: Control total del sistema<br />
-                      • Secretario: Registro y visualización (sin eliminación)
+                      • Administrador: Control total del sistema
+                      <br />• Secretario: Registro y visualización (sin
+                      eliminación)
                     </p>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                  >
                     Cancelar
                   </Button>
-                  <Button onClick={handleCrearUsuario}>
-                    Crear Usuario
-                  </Button>
+                  <Button onClick={handleCrearUsuario}>Crear Usuario</Button>
                 </div>
               </DialogContent>
             </Dialog>
 
-            <Dialog open={isDeleteUserDialogOpen} onOpenChange={setIsDeleteUserDialogOpen}>
+            <Dialog
+              open={isDeleteUserDialogOpen}
+              onOpenChange={setIsDeleteUserDialogOpen}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Eliminar Usuario</DialogTitle>
                   <DialogDescription>
-                    ¿Estás seguro de que deseas eliminar a {userToDelete?.nombre}?
+                    ¿Estás seguro de que deseas eliminar a{" "}
+                    {userToDelete?.nombre}?
                   </DialogDescription>
                 </DialogHeader>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsDeleteUserDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDeleteUserDialogOpen(false)}
+                  >
                     Cancelar
                   </Button>
-                  <Button variant="destructive" onClick={handleConfirmDeleteUsuario}>
+                  <Button
+                    variant="destructive"
+                    onClick={handleConfirmDeleteUsuario}
+                  >
                     Eliminar
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
 
-            <Dialog open={isCreatedDialogOpen} onOpenChange={setIsCreatedDialogOpen}>
+            <Dialog
+              open={isCreatedDialogOpen}
+              onOpenChange={setIsCreatedDialogOpen}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Usuario creado correctamente</DialogTitle>
@@ -382,16 +515,30 @@ export function AdminModule() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2 text-sm">
-                  <div><span className="font-semibold">Usuario:</span> {createdUser?.username || '-'}</div>
-                  <div><span className="font-semibold">Email:</span> {createdUser?.email || '-'}</div>
-                  <div><span className="font-semibold">Rol:</span> {createdUser?.role || '-'}</div>
+                  <div>
+                    <span className="font-semibold">Usuario:</span>{" "}
+                    {createdUser?.username || "-"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Email:</span>{" "}
+                    {createdUser?.email || "-"}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Rol:</span>{" "}
+                    {createdUser?.role || "-"}
+                  </div>
                   <div className="p-3 bg-gray-50 rounded border">
                     <span className="font-semibold">Contraseña temporal:</span>
-                    <div className="mt-1 font-mono text-base">{createdUser?.passwordTemporal || '-'}</div>
+                    <div className="mt-1 font-mono text-base">
+                      {createdUser?.passwordTemporal || "-"}
+                    </div>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCreatedDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreatedDialogOpen(false)}
+                  >
                     Cerrar
                   </Button>
                 </div>
@@ -415,15 +562,25 @@ export function AdminModule() {
                 {usuarios.map((usuario) => (
                   <TableRow key={usuario.id}>
                     <TableCell>{usuario.nombre}</TableCell>
-                    <TableCell>{usuario.email || '-'}</TableCell>
+                    <TableCell>{usuario.email || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant={usuario.rol === 'admin' ? 'default' : 'secondary'}>
+                      <Badge
+                        variant={
+                          usuario.rol === "admin" ? "default" : "secondary"
+                        }
+                      >
                         <Shield className="w-3 h-3 mr-1" />
-                        {usuario.rol === 'admin' ? 'Administrador' : 'Secretario'}
+                        {usuario.rol === "admin"
+                          ? "Administrador"
+                          : "Secretario"}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={usuario.estado === 'activo' ? 'default' : 'secondary'}>
+                      <Badge
+                        variant={
+                          usuario.estado === "activo" ? "default" : "secondary"
+                        }
+                      >
                         {usuario.estado}
                       </Badge>
                     </TableCell>
@@ -433,7 +590,7 @@ export function AdminModule() {
                         size="sm"
                         onClick={() => handleCambiarEstado(usuario.id)}
                       >
-                        {usuario.estado === 'activo' ? 'Desactivar' : 'Activar'}
+                        {usuario.estado === "activo" ? "Desactivar" : "Activar"}
                       </Button>
                       <Button
                         variant="destructive"
@@ -459,12 +616,13 @@ export function AdminModule() {
             <div>
               <CardTitle>Copias de Seguridad</CardTitle>
               <CardDescription>
-                Sistema de backups manuales. Los archivos se generan con pg_dump y se listan aquí.
+                Sistema de backups manuales. Los archivos se generan con pg_dump
+                y se listan aquí.
               </CardDescription>
             </div>
             <Button onClick={handleCrearBackup} disabled={isBackingUp}>
               <Database className="w-4 h-4 mr-2" />
-              {isBackingUp ? 'Creando Backup...' : 'Crear Backup Manual'}
+              {isBackingUp ? "Creando Backup..." : "Crear Backup Manual"}
             </Button>
           </div>
         </CardHeader>
@@ -497,18 +655,22 @@ export function AdminModule() {
                     <TableCell>
                       <Badge
                         variant={
-                          backup.estado === 'completado'
-                            ? 'default'
-                            : backup.estado === 'en_proceso'
-                            ? 'secondary'
-                            : 'destructive'
+                          backup.estado === "completado"
+                            ? "default"
+                            : backup.estado === "en_proceso"
+                              ? "secondary"
+                              : "destructive"
                         }
                       >
-                        {backup.estado === 'completado' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                        {backup.estado === 'fallido' && <AlertTriangle className="w-3 h-3 mr-1" />}
-                        {backup.estado === 'completado' && 'Completado'}
-                        {backup.estado === 'en_proceso' && 'En Proceso'}
-                        {backup.estado === 'fallido' && 'Fallido'}
+                        {backup.estado === "completado" && (
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                        )}
+                        {backup.estado === "fallido" && (
+                          <AlertTriangle className="w-3 h-3 mr-1" />
+                        )}
+                        {backup.estado === "completado" && "Completado"}
+                        {backup.estado === "en_proceso" && "En Proceso"}
+                        {backup.estado === "fallido" && "Fallido"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -517,7 +679,7 @@ export function AdminModule() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleDescargarBackup(backup)}
-                          disabled={backup.estado !== 'completado'}
+                          disabled={backup.estado !== "completado"}
                         >
                           <Download className="w-4 h-4 mr-1" />
                           Descargar
@@ -526,9 +688,15 @@ export function AdminModule() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleRestaurarBackup(backup)}
-                          disabled={backup.estado !== 'completado' || restoringFile === backup.fileName || isBackingUp}
+                          disabled={
+                            backup.estado !== "completado" ||
+                            restoringFile === backup.fileName ||
+                            isBackingUp
+                          }
                         >
-                          {restoringFile === backup.fileName ? 'Restaurando...' : 'Restaurar'}
+                          {restoringFile === backup.fileName
+                            ? "Restaurando..."
+                            : "Restaurar"}
                         </Button>
                       </div>
                     </TableCell>
@@ -542,9 +710,10 @@ export function AdminModule() {
             <Database className="h-4 w-4" />
             <AlertTitle>Backup Automático</AlertTitle>
             <AlertDescription>
-              El sistema crea automáticamente una copia de seguridad el primer día de cada mes a las 00:00.
-              Se mantienen los últimos 6 backups, eliminando los más antiguos automáticamente.
-              Próximo backup automático: <strong>{getProximoBackup()}</strong>
+              El sistema crea automáticamente una copia de seguridad el primer
+              día de cada mes a las 00:00. Se mantienen los últimos 6 backups,
+              eliminando los más antiguos automáticamente. Próximo backup
+              automático: <strong>{getProximoBackup()}</strong>
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -567,10 +736,124 @@ export function AdminModule() {
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Usuarios del Sistema</CardDescription>
-            <CardTitle>{usuarios.filter(u => u.estado === 'activo').length}</CardTitle>
+            <CardTitle>
+              {usuarios.filter((u) => u.estado === "activo").length}
+            </CardTitle>
           </CardHeader>
         </Card>
       </div>
+
+      {/* Configuración del Sistema */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-gray-600" />
+                Configuración Global del Club
+              </CardTitle>
+              <CardDescription>
+                Importes de cuotas sociales e inicio de transición al nuevo
+                esquema
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={cargarConfiguracion}
+              disabled={loadingConfig || savingConfig}
+            >
+              <RotateCcw className="w-4 h-4 mr-1" />
+              Recargar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {loadingConfig ? (
+            <div className="py-6 text-center text-gray-500">
+              Cargando parámetros de configuración...
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="cuotaIndividual">
+                    Cuota Social Individual ($)
+                  </Label>
+                  <Input
+                    id="cuotaIndividual"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={config.importeCuotaIndividual}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        importeCuotaIndividual: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    Monto para socios individuales.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cuotaFamiliar">
+                    Cuota Social Familiar ($)
+                  </Label>
+                  <Input
+                    id="cuotaFamiliar"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={config.importeCuotaFamiliar}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        importeCuotaFamiliar: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    Monto para grupos familiares.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="fechaEfectiva">
+                    Fecha Efectiva de Transición
+                  </Label>
+                  <Input
+                    id="fechaEfectiva"
+                    type="date"
+                    value={config.fechaEfectiva}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        fechaEfectiva: e.target.value,
+                      })
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    Debe ser el primer día de un mes (ej: 01/11/2026).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handleGuardarConfiguracion}
+                  disabled={savingConfig}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {savingConfig ? "Guardando..." : "Guardar Configuración"}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

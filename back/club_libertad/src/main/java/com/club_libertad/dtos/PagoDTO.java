@@ -20,4 +20,5 @@ public class PagoDTO {
     public MetodoPago metodoPago;
     private String observaciones;
     private List<Long> cuotaIds;
+    private List<Long> cuotaSocialIds;  // Id de las cuotas sociales asociadas al pago
 }

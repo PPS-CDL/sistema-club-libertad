@@ -1,5 +1,6 @@
 package com.club_libertad.services;
 
+import com.club_libertad.dtos.PersonaAsambleaDTO;
 import com.club_libertad.dtos.PersonaDTO;
 import com.club_libertad.exceptions.RegistroDuplicadoException;
 import com.club_libertad.models.Deporte;
@@ -11,6 +12,7 @@ import com.club_libertad.models.Promocion;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,8 +30,10 @@ public class PersonaService {
     private final PromocionRepository promocionRepository;
     private final CuotaService cuotaService;
     private final GrupoFamiliarRepository grupoFamiliarRepository;
+    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
+    private final CuotaSocialService cuotaSocialService;
 
-    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService, GrupoFamiliarRepository grupoFamiliarRepository) {
+    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService, GrupoFamiliarRepository grupoFamiliarRepository, com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository, CuotaSocialService cuotaSocialService) {
         this.personaRepository = personaRepository;
         this.deporteRepository = deporteRepository;
         this.registroRepository = registroRepository;
@@ -39,11 +43,19 @@ public class PersonaService {
         this.promocionRepository = promocionRepository;
         this.cuotaService = cuotaService;
         this.grupoFamiliarRepository = grupoFamiliarRepository;
+        this.cuotaSocialRepository = cuotaSocialRepository;
+        this.cuotaSocialService = cuotaSocialService;
     }
 
     @Transactional(readOnly = true)
     public List<Persona> getAllPersonas(){
         return personaRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PersonaAsambleaDTO> getPersonasParaAsamblea() {
+        LocalDate fechaMinima = LocalDate.now().minusYears(18);
+        return personaRepository.findPersonasParaAsamblea(fechaMinima);
     }
 
     @Transactional(readOnly = true)
@@ -115,6 +127,7 @@ public class PersonaService {
         if (p.getPromocion() != null) {
             cuotaService.actualizarCuotasMesActualParaPersona(p);
         }
+        cuotaSocialService.sincronizarCuotasSocialesMesActual();
         
         return Optional.of(p.getId());
     }
@@ -128,7 +141,8 @@ public class PersonaService {
             boolean nuevoEstado = !persona.getActivo();
             persona.setActivo(nuevoEstado);
 
-            if (!nuevoEstado) {
+            if (!nuevoEstado && (persona.getGrupoFamiliar() == null
+                    || !cuotaSocialRepository.existsByGrupoFamiliar_Id(persona.getGrupoFamiliar().getId()))) {
                 revisarYDisolverGrupoFamiliar(persona);
             }
             String dni = persona.getDni();
@@ -146,6 +160,7 @@ public class PersonaService {
                 }
                 b = true;
             }
+            cuotaSocialService.sincronizarCuotasSocialesMesActual();
         }
         return b;
     }
@@ -181,6 +196,7 @@ public class PersonaService {
 
             // Disparar la actualización de la cuota del mes actual (aplica descuento o revierte si se quitó)
             cuotaService.actualizarCuotasMesActualParaPersona(persona);
+            cuotaSocialService.sincronizarCuotasSocialesMesActual();
 
             return true;
         }

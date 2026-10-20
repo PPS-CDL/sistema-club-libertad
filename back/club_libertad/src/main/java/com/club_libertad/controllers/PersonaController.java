@@ -1,5 +1,6 @@
 package com.club_libertad.controllers;
 
+import com.club_libertad.dtos.PersonaAsambleaDTO;
 import com.club_libertad.dtos.PersonaDTO;
 import com.club_libertad.exceptions.RegistroDuplicadoException;
 import com.club_libertad.models.Registro;
@@ -28,6 +29,16 @@ public class PersonaController {
     @Operation(summary = "Obtiene todas las personas")
     public ResponseEntity<List<Persona>> getPersonas() {
         List<Persona> personas = personaService.getAllPersonas();
+        return ResponseEntity.ok(personas);
+    }
+
+    @GetMapping("/personas/asamblea")
+    @Operation(summary = "Obtiene el listado de socios aptos para la asamblea")
+    public ResponseEntity<List<PersonaAsambleaDTO>> getPersonasParaAsamblea() {
+        List<PersonaAsambleaDTO> personas = personaService.getPersonasParaAsamblea();
+        if (personas == null || personas.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
         return ResponseEntity.ok(personas);
     }
 

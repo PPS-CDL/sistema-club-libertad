@@ -11,9 +11,9 @@ import com.club_libertad.repositories.CuotaRepository;
 import com.club_libertad.repositories.DeporteRepository;
 import com.club_libertad.repositories.InscripcionRepository;
 import com.club_libertad.repositories.PersonaRepository;
+import com.club_libertad.services.ConfiguracionClubService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -27,12 +27,16 @@ public class CuotaService {
     private final InscripcionRepository inscripcionRepository;
     private final PersonaRepository personaRepository;
     private final DeporteRepository deporteRepository;
-    
-    public CuotaService(CuotaRepository cuotaRepository, InscripcionRepository inscripcionRepository, PersonaRepository personaRepository, DeporteRepository deporteRepository) {
+    private final ConfiguracionClubService configuracionClubService;
+    private final com.club_libertad.services.CuotaSocialService cuotaSocialService;
+
+    public CuotaService(CuotaRepository cuotaRepository, InscripcionRepository inscripcionRepository, PersonaRepository personaRepository, DeporteRepository deporteRepository, ConfiguracionClubService configuracionClubService, com.club_libertad.services.CuotaSocialService cuotaSocialService) {
         this.cuotaRepository = cuotaRepository;
         this.inscripcionRepository = inscripcionRepository;
         this.personaRepository = personaRepository;
         this.deporteRepository = deporteRepository;
+        this.configuracionClubService = configuracionClubService;
+        this.cuotaSocialService = cuotaSocialService;
     }
 
     // Método auxiliar para calcular monto con descuentos de promociones
@@ -78,7 +82,12 @@ public class CuotaService {
         
         BigDecimal cuotaEntrenador = deporteExisting.getCuotaEntrenador() != null ? deporteExisting.getCuotaEntrenador() : BigDecimal.ZERO;
         BigDecimal cuotaSeguro = deporteExisting.getCuotaSeguro() != null ? deporteExisting.getCuotaSeguro() : BigDecimal.ZERO;
-        BigDecimal cuotaSocial = deporteExisting.getCuotaSocial() != null ? deporteExisting.getCuotaSocial() : BigDecimal.ZERO;
+        com.club_libertad.models.ConfiguracionClub config = configuracionClubService.getConfiguracion();
+        boolean conservaComponenteSocial = config.getFechaEfectiva() == null
+            || cuotaTransfer.getPeriodo().isBefore(config.getFechaEfectiva());
+        BigDecimal cuotaSocial = conservaComponenteSocial && deporteExisting.getCuotaSocial() != null
+            ? deporteExisting.getCuotaSocial()
+            : BigDecimal.ZERO;
         BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
 
         Promocion promocion = personaExisting.getPromocion();
@@ -114,6 +123,10 @@ public class CuotaService {
         LocalDate primerDiaMes = hoy.withDayOfMonth(1);
         LocalDate primerDiaMesSiguiente = YearMonth.from(hoy).plusMonths(1).atDay(1);
         
+        // Validación de la fecha efectiva de la configuración del club
+        com.club_libertad.models.ConfiguracionClub config = configuracionClubService.getConfiguracionForUpdate();
+        boolean esPostTransicion = config.getFechaEfectiva() != null && !primerDiaMes.isBefore(config.getFechaEfectiva());
+
         List<Inscripcion> inscripcionesActivas = inscripcionRepository.findAllActive();
         int cuotasGeneradas = 0;
         
@@ -134,7 +147,13 @@ public class CuotaService {
                 // Aplicar descuentos de promociones si la persona los tiene
                 BigDecimal cuotaEntrenador = inscripcion.getDeporteId().getCuotaEntrenador() != null ? inscripcion.getDeporteId().getCuotaEntrenador() : BigDecimal.ZERO;
                 BigDecimal cuotaSeguro = inscripcion.getDeporteId().getCuotaSeguro() != null ? inscripcion.getDeporteId().getCuotaSeguro() : BigDecimal.ZERO;
-                BigDecimal cuotaSocial = inscripcion.getDeporteId().getCuotaSocial() != null ? inscripcion.getDeporteId().getCuotaSocial() : BigDecimal.ZERO;
+                
+                BigDecimal cuotaSocial = esPostTransicion
+                        ? BigDecimal.ZERO
+                        : inscripcion.getDeporteId().getCuotaSocial() != null
+                                ? inscripcion.getDeporteId().getCuotaSocial()
+                                : BigDecimal.ZERO;
+                
                 BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
                 Promocion promocion = inscripcion.getPersonaId().getPromocion();
                 BigDecimal montoFinal = aplicarDescuentoPromocion(montoBase, promocion);
@@ -152,7 +171,11 @@ public class CuotaService {
                 cuotasGeneradas++;
             }
         }
-        
+        // Generar independientemente las obligaciones sociales si aplica
+        if (esPostTransicion) {
+            cuotaSocialService.generarCuotasSocialesMesActual();
+        }
+
         return cuotasGeneradas;
     }
 
@@ -165,6 +188,9 @@ public class CuotaService {
     public void actualizarCuotasMesActualParaPersona(Persona persona) {
         LocalDate hoy = LocalDate.now();
         LocalDate primerDiaMes = hoy.withDayOfMonth(1);
+       com.club_libertad.models.ConfiguracionClub config = configuracionClubService.getConfiguracion();
+        boolean esPostTransicion = config.getFechaEfectiva() != null && !primerDiaMes.isBefore(config.getFechaEfectiva());
+
         // Obtenemos todas las cuotas y filtramos por la persona y el mes actual
         List<Cuota> todasLasCuotas = cuotaRepository.findAll();
         
@@ -183,12 +209,18 @@ public class CuotaService {
                 if (deporte != null) {
                     BigDecimal cuotaEntrenador = deporte.getCuotaEntrenador() != null ? deporte.getCuotaEntrenador() : BigDecimal.ZERO;
                     BigDecimal cuotaSeguro = deporte.getCuotaSeguro() != null ? deporte.getCuotaSeguro() : BigDecimal.ZERO;
-                    BigDecimal cuotaSocial = deporte.getCuotaSocial() != null ? deporte.getCuotaSocial() : BigDecimal.ZERO;
+
+                   // REGLA: Recalcular respetando si estamos en transición o no
+                    BigDecimal cuotaSocial = BigDecimal.ZERO;
+                    if (!esPostTransicion) {
+                        cuotaSocial = deporte.getCuotaSocial() != null ? deporte.getCuotaSocial() : BigDecimal.ZERO;
+                    }
                     BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
                     
                     // Recalcular usando la promoción actual o valor vigente sin promoción
                     BigDecimal montoFinal = aplicarDescuentoPromocion(montoBase, persona.getPromocion());
                     
+                    cuota.setCuotaSocial(cuotaSocial);
                     cuota.setMonto(montoFinal);
                     cuotaRepository.save(cuota);
                 }
@@ -239,7 +271,3 @@ public class CuotaService {
     }
 }
     
-
-                    
-
-
