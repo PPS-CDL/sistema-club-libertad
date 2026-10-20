@@ -1506,153 +1506,166 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </TableRow>
                     ) : (
                       filteredSocios.map((socio) => (
-                        <>
-                          <TableRow 
-                            key={socio.id}
+                        <Fragment key={socio.id}>
+                          <TableRow
                             onClick={() => toggleExpandSocio(socio.id)}
                             className="cursor-pointer hover:bg-muted/50"
                           >
-                          <TableCell>
-                            <div>
+                            <TableCell>
                               <div>
-                                {socio.apellido}, {socio.nombre}
-                              </div>
-                              {socio.responsablePago && (
-                                <div className="text-sm text-gray-400">
-                                  Responsable: {socio.responsablePago}
+                                <div>
+                                  {socio.apellido}, {socio.nombre}
                                 </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div>{socio.dni}</div>
-                              {socio.responsablePago && (
-                                <div className="text-sm text-gray-400">
-                                  DNI responsable: {socio.responsableDni || "-"}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {getCategoriaLabel(socio.categoria)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {calcularEdad(socio?.fechaNacimiento) === 0
-                              ? "Sin edad"
-                              : `${calcularEdad(socio?.fechaNacimiento)} años`}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <div>{socio?.telefono || "Sin teléfono"}</div>
-                              <div className="text-gray-500">
-                                {socio?.email || "Sin email"}
+                                {socio.responsablePago && (
+                                  <div className="text-sm text-gray-400">
+                                    Responsable: {socio.responsablePago}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {getDeportesNombres(socio.deportesIds).length >
-                              0 ? (
-                                getDeportesNombres(socio.deportesIds).map(
-                                  (deporte, idx) => (
-                                    <Badge
-                                      key={idx}
-                                      variant="secondary"
-                                      className="text-xs"
-                                    >
-                                      {deporte}
-                                    </Badge>
-                                  ),
-                                )
-                              ) : (
-                                <span className="text-sm text-gray-400">
-                                  Sin deportes
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {formatDate(socio.fechaRegistro)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleAltaBaja(socio.id)}
-                              >
-                                <ArrowUpDown
-                                  color="#ea580c"
-                                  className="w-4 h-4"
-                                />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleOpenDialog(socio)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              {userRole === "admin" && (
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div>{socio.dni}</div>
+                                {socio.responsablePago && (
+                                  <div className="text-sm text-gray-400">
+                                    DNI responsable: {socio.responsableDni || "-"}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {getCategoriaLabel(socio.categoria)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {calcularEdad(socio?.fechaNacimiento) === 0
+                                ? "Sin edad"
+                                : `${calcularEdad(socio?.fechaNacimiento)} años`}
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                <div>{socio?.telefono || "Sin teléfono"}</div>
+                                <div className="text-gray-500">
+                                  {socio?.email || "Sin email"}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                {formatDate(socio.fechaRegistro)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleDelete(socio.id)}
+                                  onClick={() => handleAltaBaja(socio.id)}
                                 >
-                                  <Trash2 className="w-4 h-4 text-red-600" />
+                                  <ArrowUpDown
+                                    color="#ea580c"
+                                    className="w-4 h-4"
+                                  />
                                 </Button>
-                              )}
-                        
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenDialog(socio)}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                {userRole === "admin" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDelete(socio.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-600" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
                           {expandedSocioId === socio.id && (
                             <TableRow key={`expanded-${socio.id}`}>
                               <TableCell colSpan={7} className="bg-gray-50 p-0">
                                 <div className="p-4">
                                   {loadingCuotasId === socio.id ? (
-                                    <div className="text-sm text-gray-500">Cargando cuotas...</div>
+                                    <div className="text-sm text-gray-500">
+                                      Cargando cuotas...
+                                    </div>
                                   ) : (
                                     <div className="space-y-3">
                                       <div className="text-sm font-medium text-gray-700">
                                         Deportes y estado de cuota
                                       </div>
-                                      {(!cuotasPorSocio[socio.id] || cuotasPorSocio[socio.id].length === 0) ? (
-                                        <div className="text-sm text-gray-500">Sin cuotas asociadas</div>
+                                      {!cuotasPorSocio[socio.id] ||
+                                      cuotasPorSocio[socio.id].length === 0 ? (
+                                        <div className="text-sm text-gray-500">
+                                          Sin cuotas asociadas
+                                        </div>
                                       ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                          {cuotasPorSocio[socio.id].map((cuota) => {
-                                            const deporte = deportes.find(d => Number(d.id) === cuota.deporteId);
-                                            const nombreDeporte = deporte?.nombre || `Deporte ${cuota.deporteId}`;
-                                            const isPagada = cuota.estado === 'PAGADA';
-                                            const isPendiente = cuota.estado === 'GENERADA';
-                                            const isVencida = cuota.estado === 'VENCIDA';
-                                            return (
-                                              <div
-                                                key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
-                                                className="flex items-center justify-between rounded-md border bg-white px-3 py-2"
-                                              >
-                                                <div>
-                                                  <div className="font-medium">{nombreDeporte}</div>
-                                                  <div className="text-xs text-gray-500">{cuota.periodo}</div>
-                                                </div>
+                                          {cuotasPorSocio[socio.id].map(
+                                            (cuota) => {
+                                              const deporte = deportes.find(
+                                                (d) =>
+                                                  Number(d.id) ===
+                                                  cuota.deporteId,
+                                              );
+                                              const nombreDeporte =
+                                                deporte?.nombre ||
+                                                `Deporte ${cuota.deporteId}`;
+                                              const isPagada =
+                                                cuota.estado === "PAGADA";
+                                              const isPendiente =
+                                                cuota.estado === "GENERADA";
+                                              const isVencida =
+                                                cuota.estado === "VENCIDA";
+                                              return (
+                                                <div
+                                                  key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
+                                                  className="flex items-center justify-between rounded-md border bg-white px-3 py-2"
+                                                >
+                                                  <div>
+                                                    <div className="font-medium">
+                                                      {nombreDeporte}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                      {cuota.periodo}
+                                                    </div>
+                                                  </div>
                                                   <Badge
                                                     variant="outline"
-                                                    style={isPagada 
-                                                      ? { borderColor: '#16a34a', backgroundColor: '#dcfce7', color: '#15803d' }
-                                                      : { borderColor: '#dc2626', backgroundColor: '#fee2e2', color: '#b91c1c' }
+                                                    style={
+                                                      isPagada
+                                                        ? {
+                                                            borderColor:
+                                                              "#16a34a",
+                                                            backgroundColor:
+                                                              "#dcfce7",
+                                                            color: "#15803d",
+                                                          }
+                                                        : {
+                                                            borderColor:
+                                                              "#dc2626",
+                                                            backgroundColor:
+                                                              "#fee2e2",
+                                                            color: "#b91c1c",
+                                                          }
                                                     }
                                                   >
-                                                    {isPagada ? 'PAGADA' : isPendiente ? 'PENDIENTE' : 'VENCIDA'}
+                                                    {isPagada
+                                                      ? "PAGADA"
+                                                      : isPendiente
+                                                        ? "PENDIENTE"
+                                                        : "VENCIDA"}
                                                   </Badge>
-                                            </div>
-                                            );
-                                          })}
+                                                </div>
+                                              );
+                                            },
+                                          )}
                                         </div>
                                       )}
                                     </div>
@@ -1661,7 +1674,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       ))
                     )}
                   </TableBody>
