@@ -1,5 +1,6 @@
 package com.club_libertad.services;
-
+import com.club_libertad.dtos.EstadoPagosDeporteDTO;
+import com.club_libertad.dtos.PersonaEstadoPagoDTO;
 import com.club_libertad.dtos.CuotaDTO;
 import com.club_libertad.enums.EstadoCuota;
 import com.club_libertad.models.Cuota;
@@ -268,6 +269,52 @@ public class CuotaService {
         }
 
         return respuesta;
+    }
+
+    // Método para obtener el estado de pagos por deporte y periodo
+    @Transactional(readOnly = true)
+    public EstadoPagosDeporteDTO getEstadoPagosPorDeporteYPeriodo(Long deporteId, String periodoStr) {
+        LocalDate periodo = java.time.YearMonth.parse(periodoStr).atDay(1);
+
+        List<Cuota> cuotas = cuotaRepository.findCuotasConPersonaPorDeporteYPeriodo(deporteId, periodo);
+
+        int pagaron = 0;
+        int deben = 0;
+        List<PersonaEstadoPagoDTO> personas = new java.util.ArrayList<>();
+
+        for (Cuota c : cuotas) {
+            com.club_libertad.enums.EstadoCuota estadoReal = c.getEstado();
+            String estadoMostrado;
+
+            // Filtro estricto de estados
+            if (estadoReal == com.club_libertad.enums.EstadoCuota.PAGADA) {
+                estadoMostrado = "PAGADA";
+                pagaron++;
+            } else if (estadoReal == com.club_libertad.enums.EstadoCuota.GENERADA || 
+                       estadoReal == com.club_libertad.enums.EstadoCuota.VENCIDA) {
+                estadoMostrado = "PENDIENTE";
+                deben++;
+            } else {
+                continue;
+            }
+
+            Persona p = c.getPersonaId();
+            personas.add(new PersonaEstadoPagoDTO(
+                p.getId(),
+                p.getNombre(),
+                p.getApellido(),
+                p.getDni(),
+                estadoMostrado
+            ));
+        }
+        // Se garantiza que: Total = Pagaron + Deben
+        return new EstadoPagosDeporteDTO(
+            periodoStr,
+            (pagaron + deben), 
+            pagaron,
+            deben,
+            personas
+        );
     }
 }
     

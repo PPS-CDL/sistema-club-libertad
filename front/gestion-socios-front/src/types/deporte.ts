@@ -9,3 +9,19 @@ export interface Deporte {
   personasIds?: number[]; // IDs de las personas asociadas
   numeroSocios?: number; // Número de socios asociados
 }
+
+export interface PersonaEstadoPagoDTO {
+  personaId: number;
+  nombre: string;
+  apellido: string;
+  dni: string;
+  estado: "PAGADA" | "PENDIENTE";
+}
+
+export interface EstadoPagosDeporteDTO {
+  periodo: string; // Formato YYYY-MM
+  totalInscriptos: number;
+  pagaron: number;
+  deben: number;
+  personas: PersonaEstadoPagoDTO[];
+}

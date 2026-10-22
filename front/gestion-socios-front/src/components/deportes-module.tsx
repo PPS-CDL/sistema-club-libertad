@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -34,6 +34,10 @@ import {
   UserPlus,
   UserMinus,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Search,
 } from "lucide-react";
 import { Checkbox } from "./ui/checkbox";
 import { toast } from "sonner";
@@ -41,11 +45,240 @@ import deporteService from "../services/deporteService";
 import configuracionClubService from "../services/configuracionClubService";
 import personaService from "../services/personaService";
 import inscripcionService from "../services/inscripcionService";
-import type { Deporte } from "../types/deporte";
+import type { Deporte, EstadoPagosDeporteDTO } from "../types/deporte";
 import type { Persona } from "../types/persona";
 
 interface DeportesModuleProps {
   userRole: "admin" | "secretario";
+}
+
+// Subcomponente Panel Desplegable de Estado de Pagos
+function DeporteEstadoPagosPanel({ deporte }: { deporte: Deporte }) {
+  const hoy = new Date();
+  const periodoActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+
+  const [periodo, setPeriodo] = useState<string>(periodoActual);
+  const [data, setData] = useState<EstadoPagosDeporteDTO | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Estados para buscador con debounce
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+
+  // Cargar datos de pagos al cambiar el período o el deporte
+  useEffect(() => {
+    let isMounted = true;
+    if (!deporte.id) return;
+
+    setLoading(true);
+    deporteService
+      .getEstadoPagos(deporte.id, periodo)
+      .then((res) => {
+        if (isMounted && res?.data) {
+          setData(res.data);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          toast.error("Error al obtener el estado de pagos del deporte");
+        }
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [deporte.id, periodo]);
+
+  // Debounce de 400ms para la búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Función para normalizar texto (quitar tildes y mayúsculas)
+  const normalizeStr = (str: string) =>
+    str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  // Filtrado local de personas
+  const personasFiltradas = useMemo(() => {
+    if (!data?.personas) return [];
+    if (!debouncedSearch.trim()) return data.personas;
+
+    const queryNorm = normalizeStr(debouncedSearch.trim());
+    return data.personas.filter((p) => {
+      const nombreCompleto = normalizeStr(`${p.nombre} ${p.apellido}`);
+      return nombreCompleto.includes(queryNorm) || p.dni.includes(queryNorm);
+    });
+  }, [data, debouncedSearch]);
+
+  // Exportación CSV
+  const exportarCSVEstadoPagos = () => {
+    if (!data || !data.personas || data.personas.length === 0) {
+      toast.error("No hay datos para exportar");
+      return;
+    }
+
+    const colWidths = [35, 20, 20];
+    const formatearFila = (cols: (string | number)[]) =>
+      cols
+        .map((col, idx) => {
+          const str = String(col ?? "").trim();
+          const width = colWidths[idx] || 20;
+          return str.padEnd(width, " ");
+        })
+        .join(";");
+
+    let lineas: string[] = [];
+    lineas.push(formatearFila(["Nombre y apellido", "DNI", "Estado de pago"]));
+
+    // Se exporta el listado completo independientemente de la búsqueda activa
+    data.personas.forEach((p) => {
+      lineas.push(
+        formatearFila([`${p.nombre} ${p.apellido}`, p.dni, p.estado]),
+      );
+    });
+
+    const contenidoCSV = "\uFEFF" + lineas.join("\n");
+    const blob = new Blob([contenidoCSV], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+
+    const nombreDeporteClean = deporte.nombre
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    a.download = `estado_pagos_${nombreDeporteClean}_${periodo}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Archivo CSV descargado correctamente");
+  };
+
+  return (
+    <div className="p-4 bg-gray-50/80 border-t border-b border-gray-200 space-y-4">
+      {/* Cabecera del desplegable: Nombre del deporte, Selector, Buscador y Botón CSV */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <h4 className="font-semibold text-lg text-gray-800">
+            {deporte.nombre}
+          </h4>
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor={`periodo-${deporte.id}`}
+              className="text-sm font-medium"
+            >
+              Período:
+            </Label>
+            <Input
+              id={`periodo-${deporte.id}`}
+              type="month"
+              value={periodo}
+              max={periodoActual}
+              onChange={(e) => setPeriodo(e.target.value)}
+              className="w-40 bg-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative w-full md:w-64">
+            <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" />
+            <Input
+              type="text"
+              placeholder=" Buscar por nombre o apellido..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 bg-white"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={exportarCSVEstadoPagos}
+            disabled={!data || data.personas.length === 0}
+            className="whitespace-nowrap"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Descargar CSV
+          </Button>
+        </div>
+      </div>
+
+      {/* Contadores generales */}
+      {data && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm text-center">
+            <p className="text-xs text-gray-500 font-medium">
+              Inscriptos con cuota
+            </p>
+            <p className="text-xl font-bold text-gray-800">
+              {data.totalInscriptos}
+            </p>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-green-200 bg-green-50/30 shadow-sm text-center">
+            <p className="text-xs text-green-700 font-medium">Pagaron</p>
+            <p className="text-xl font-bold text-green-600">{data.pagaron}</p>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-red-200 bg-red-50/30 shadow-sm text-center">
+            <p className="text-xs text-red-700 font-medium">Deben</p>
+            <p className="text-xl font-bold text-red-600">{data.deben}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla de personas */}
+      {loading ? (
+        <p className="text-center text-sm text-gray-500 py-4">
+          Cargando estado de pagos...
+        </p>
+      ) : personasFiltradas.length > 0 ? (
+        <div className="border rounded-lg bg-white overflow-hidden">
+          <Table>
+            <TableHeader className="bg-gray-100/70">
+              <TableRow>
+                <TableHead>Nombre y Apellido</TableHead>
+                <TableHead>DNI</TableHead>
+                <TableHead className="text-right">Estado de Pago</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {personasFiltradas.map((persona) => (
+                <TableRow key={persona.personaId}>
+                  <TableCell className="font-medium">
+                    {persona.nombre} {persona.apellido}
+                  </TableCell>
+                  <TableCell>{persona.dni}</TableCell>
+                  <TableCell className="text-right">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        persona.estado === "PAGADA"
+                          ? "bg-green-100 text-green-800 border border-green-200"
+                          : "bg-red-100 text-red-800 border border-red-200"
+                      }`}
+                    >
+                      {persona.estado}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <p className="text-center text-sm text-gray-500 py-6 bg-white border rounded-lg">
+          {!data || data.personas.length === 0
+            ? "No existen cuotas deportivas generadas para el período seleccionado."
+            : "No se encontraron coincidencia para la búsqueda."}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function DeportesModule({ userRole }: DeportesModuleProps) {
@@ -81,6 +314,14 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
     cuotaSeguro: false,
   });
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  // Estado para controlar qué deporte se encuentra desplegado
+  const [expandedDeporteId, setExpandedDeporteId] = useState<number | null>(
+    null,
+  );
+
+  const toggleExpandDeporte = (id: number) => {
+    setExpandedDeporteId((prev) => (prev === id ? null : id));
+  };
 
   const totalCuota =
     (formData.cuotaEntrenador ?? 0) + (formData.cuotaSeguro ?? 0);
@@ -218,7 +459,7 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
   };
 
   const handleOpenAssociateDialog = () => {
-    setSelectedPersonaId(null);
+    setSelectedPersonaId("");
     setSelectedDeportes([]);
     setSearchPersona("");
     setIsDropdownOpen(false);
@@ -852,50 +1093,76 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
                 <TableBody>
                   {Array.isArray(deportes)
                     ? deportes.map((deporte) => (
-                        <TableRow key={deporte.id}>
-                          <TableCell className="font-medium">
-                            {deporte.nombre}
-                          </TableCell>
-                          <TableCell className="max-w-xs">
-                            {deporte.descripcion || "—"}
-                          </TableCell>
-                          <TableCell>
-                            <span className="flex items-center gap-1">
-                              <DollarSign className="w-4 h-4 text-green-600" />
-                              {obtenerCuotaMensualVigente(
-                                deporte,
-                              ).toLocaleString()}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="flex items-center gap-1">
-                              <UsersIcon className="w-4 h-4 text-blue-600" />
-                              {deporte.numeroSocios ?? 0}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleOpenDialog(deporte)}
+                        <FragmentKey key={deporte.id}>
+                          <TableRow
+                            onClick={() =>
+                              deporte.id && toggleExpandDeporte(deporte.id)
+                            }
+                            className="cursor-pointer hover:bg-gray-50 transition-colors"
+                          >
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {expandedDeporteId === deporte.id ? (
+                                  <ChevronUp className="w-4 h-4 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                                )}
+                                <span>{deporte.nombre}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="max-w-xs">
+                              {deporte.descripcion || "—"}
+                            </TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-1">
+                                <DollarSign className="w-4 h-4 text-green-600" />
+                                {obtenerCuotaMensualVigente(
+                                  deporte,
+                                ).toLocaleString()}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-1">
+                                <UsersIcon className="w-4 h-4 text-blue-600" />
+                                {deporte.numeroSocios ?? 0}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div
+                                className="flex justify-end gap-2"
+                                onClick={(e) => e.stopPropagation()} // Evita abrir/cerrar desplegable al hacer clic en acciones
                               >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              {userRole === "admin" && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() =>
-                                    deporte.id && handleDelete(deporte.id)
-                                  }
+                                  onClick={() => handleOpenDialog(deporte)}
                                 >
-                                  <Trash2 className="w-4 h-4 text-red-600" />
+                                  <Edit className="w-4 h-4" />
                                 </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                                {userRole === "admin" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      deporte.id && handleDelete(deporte.id)
+                                    }
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-600" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Fila del Desplegable (Solo se muestra 1 a la vez) */}
+                          {expandedDeporteId === deporte.id && (
+                            <TableRow key={`expanded-${deporte.id}`}>
+                              <TableCell colSpan={5} className="p-0">
+                                <DeporteEstadoPagosPanel deporte={deporte} />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </FragmentKey>
                       ))
                     : null}
                 </TableBody>
@@ -906,4 +1173,8 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
       </Card>
     </div>
   );
+}
+// Helper auxiliar para iterar elementos con clave react pura
+function FragmentKey({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
