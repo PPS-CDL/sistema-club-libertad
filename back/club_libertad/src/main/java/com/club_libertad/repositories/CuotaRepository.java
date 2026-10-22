@@ -62,4 +62,8 @@ public interface CuotaRepository extends JpaRepository<Cuota, Long> {
             @Param("anio") int anio,
             @Param("mes") int mes,
             @Param("deporteId") Long deporteId);
+
+
+    @Query("SELECT c FROM Cuota c JOIN FETCH c.personaId WHERE c.deporteId.id = :deporteId AND c.periodo = :periodo")
+    List<Cuota> findCuotasConPersonaPorDeporteYPeriodo(@Param("deporteId") Long deporteId, @Param("periodo") LocalDate periodo);
 }
