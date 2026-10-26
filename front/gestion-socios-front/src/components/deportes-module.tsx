@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
+import { Badge } from "./ui/badge";
 import {
   Plus,
   Edit,
@@ -107,15 +108,35 @@ function DeporteEstadoPagosPanel({ deporte }: { deporte: Deporte }) {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
-  // Filtrado local de personas
+  // Filtrado local y ordenamiento
   const personasFiltradas = useMemo(() => {
     if (!data?.personas) return [];
-    if (!debouncedSearch.trim()) return data.personas;
 
-    const queryNorm = normalizeStr(debouncedSearch.trim());
-    return data.personas.filter((p) => {
-      const nombreCompleto = normalizeStr(`${p.nombre} ${p.apellido}`);
-      return nombreCompleto.includes(queryNorm) || p.dni.includes(queryNorm);
+    let lista = [...data.personas];
+
+    // Filtrar por término de búsqueda si existe
+    if (debouncedSearch.trim()) {
+      const queryNorm = normalizeStr(debouncedSearch.trim());
+      lista = lista.filter((p) => {
+        const nombreCompleto = normalizeStr(`${p.nombre} ${p.apellido}`);
+        const apellidoNombre = normalizeStr(`${p.apellido} ${p.nombre}`);
+        return (
+          nombreCompleto.includes(queryNorm) ||
+          apellidoNombre.includes(queryNorm) ||
+          p.dni.includes(queryNorm)
+        );
+      });
+    }
+
+    // Ordenar: PENDIENTE primero, PAGADA después
+    return lista.sort((a, b) => {
+      if (a.estado !== b.estado) {
+        return a.estado === "PENDIENTE" ? -1 : 1;
+      }
+      // Dentro de cada grupo, ordenar alfabéticamente por Nombre y Apellido
+      const nombreA = normalizeStr(`${a.nombre} ${a.apellido}`);
+      const nombreB = normalizeStr(`${b.nombre} ${b.apellido}`);
+      return nombreA.localeCompare(nombreB);
     });
   }, [data, debouncedSearch]);
 
@@ -248,25 +269,37 @@ function DeporteEstadoPagosPanel({ deporte }: { deporte: Deporte }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {personasFiltradas.map((persona) => (
-                <TableRow key={persona.personaId}>
-                  <TableCell className="font-medium">
-                    {persona.nombre} {persona.apellido}
-                  </TableCell>
-                  <TableCell>{persona.dni}</TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        persona.estado === "PAGADA"
-                          ? "bg-green-100 text-green-800 border border-green-200"
-                          : "bg-red-100 text-red-800 border border-red-200"
-                      }`}
-                    >
-                      {persona.estado}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {personasFiltradas.map((persona) => {
+                const isPagada = persona.estado === "PAGADA";
+                return (
+                  <TableRow key={persona.personaId}>
+                    <TableCell className="font-medium">
+                      {persona.nombre} {persona.apellido}
+                    </TableCell>
+                    <TableCell>{persona.dni}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge
+                        variant="outline"
+                        style={
+                          isPagada
+                            ? {
+                                borderColor: "#16a34a",
+                                backgroundColor: "#dcfce7",
+                                color: "#15803d",
+                              }
+                            : {
+                                borderColor: "#dc2626",
+                                backgroundColor: "#fee2e2",
+                                color: "#b91c1c",
+                              }
+                        }
+                      >
+                        {persona.estado}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
