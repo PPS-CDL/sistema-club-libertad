@@ -6,6 +6,7 @@ const PERSONA_ENDPOINTS = {
   GET_BY_ID: (id: number) => `/persona/${id}`,
   CREATE: "/persona",
   UPDATE: (id: number) => `/persona/${id}`,
+  DELETE: (id: number) => `/persona/${id}`,
   TOGGLE_ACTIVE: (id: number) => `/persona/activo/${id}`,
 };
 
@@ -83,18 +84,11 @@ const personaService = {
     });
   },
 
-  delete(id: number, observacionBaja?: string) {
-    const params = new URLSearchParams();
-    if (observacionBaja) {
-      params.append("observacionBaja", observacionBaja);
-    }
-    const queryString = params.toString();
-    return api
-      .delete<string>(`/persona/${id}${queryString ? "?" + queryString : ""}`)
-      .catch((error) => {
-        console.error("Error al eliminar persona:", error);
-        throw error;
-      });
+  delete(id: number) {
+    return api.delete<string>(PERSONA_ENDPOINTS.DELETE(id)).catch((error) => {
+      console.error("Error al eliminar persona:", error);
+      throw error;
+    });
   },
 };
 

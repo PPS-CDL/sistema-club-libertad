@@ -2,15 +2,20 @@ package com.club_libertad.services;
 
 import com.club_libertad.dtos.PersonaAsambleaDTO;
 import com.club_libertad.dtos.PersonaDTO;
+import com.club_libertad.enums.EstadoCuota;
 import com.club_libertad.exceptions.RegistroDuplicadoException;
+import com.club_libertad.models.Cuota;
+import com.club_libertad.models.CuotaSocial;
 import com.club_libertad.models.Deporte;
 import com.club_libertad.models.GrupoFamiliar;
 import com.club_libertad.models.Persona;
 import com.club_libertad.repositories.*;
 import com.club_libertad.models.Registro;
 import com.club_libertad.models.Promocion;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -21,6 +26,8 @@ import java.util.Set;
 
 @Service
 public class PersonaService {
+    private static final String MENSAJE_ERROR_BORRADO = "No se permite el borrado de socios con cuotas pagas, solo se pueden borrar socios recién registrados por error";
+
     private final PersonaRepository personaRepository;
     private final DeporteRepository deporteRepository;
     private final RegistroRepository registroRepository;
@@ -30,10 +37,10 @@ public class PersonaService {
     private final PromocionRepository promocionRepository;
     private final CuotaService cuotaService;
     private final GrupoFamiliarRepository grupoFamiliarRepository;
-    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
+    private final CuotaSocialRepository cuotaSocialRepository;
     private final CuotaSocialService cuotaSocialService;
 
-    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository,CuotaService cuotaService, GrupoFamiliarRepository grupoFamiliarRepository, com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository, CuotaSocialService cuotaSocialService) {
+    public PersonaService(PersonaRepository personaRepository, DeporteRepository deporteRepository, RegistroRepository registroRepository, InscripcionRepository inscripcionRepository, CuotaRepository cuotaRepository, PagoRepository pagoRepository, PromocionRepository promocionRepository, CuotaService cuotaService, GrupoFamiliarRepository grupoFamiliarRepository, CuotaSocialRepository cuotaSocialRepository, CuotaSocialService cuotaSocialService) {
         this.personaRepository = personaRepository;
         this.deporteRepository = deporteRepository;
         this.registroRepository = registroRepository;
@@ -235,49 +242,83 @@ public class PersonaService {
 
     @Transactional
     public boolean deletePersonaById(Long id, String observacionBaja){
-        if(personaRepository.existsById(id)){
-            Optional<Persona> persona = personaRepository.findById(id);
-            if(persona.isPresent()){
-                revisarYDisolverGrupoFamiliar(persona.get());
-                // Actualizar el registro con la fecha de baja y observación
-                String dni = persona.get().getDni();
-                Optional<Registro> registro = registroRepository.findByDni(dni);
-                if(registro.isPresent()) {
-                    registro.get().setFechaBaja(ZonedDateTime.now());
-                    if(observacionBaja != null && !observacionBaja.trim().isEmpty()) {
-                        registro.get().setObservacionBaja(observacionBaja);
-                    }
-                    registroRepository.save(registro.get());
-                }
-                
-                // Eliminar todas las cuotas asociadas a esta persona
-                cuotaRepository.deleteByPersonaId_Id(id);
-                
-                // Eliminar todas las inscripciones de esta persona
-                inscripcionRepository.deleteByPersonaId_Id(id);
+        Optional<Persona> personaOpt = personaRepository.findById(id);
+        if (personaOpt.isPresent()) {
+            Persona persona = personaOpt.get();
 
-                // Eliminar todos los pagos asociados a esta persona
-                pagoRepository.deleteBySocioId_Id(id);
-                
-                // Desasociar promociones y deportes (relaciones many-to-many)
-                persona.get().setPromocion(null);
-                persona.get().getDeportes().clear();
-                personaRepository.save(persona.get());
-                
-                // Eliminar referencias como socioResponsable de otras personas
-                List<Persona> personasDependientes = personaRepository.findAll().stream()
-                    .filter(p -> p.getSocioResponsable() != null && p.getSocioResponsable().getId().equals(id))
-                    .toList();
-                for(Persona p : personasDependientes){
-                    p.setSocioResponsable(null);
-                }
-                
-                // 5. Finalmente, eliminar la persona
-                personaRepository.deleteById(id);
-                return true;
+            // Validar que sea exclusivamente un socio recién registrado por error
+            validarElegibilidadBorradoPorError(persona);
+
+            revisarYDisolverGrupoFamiliar(persona);
+
+            // Eliminar registro inmutable para liberar el DNI en altas erróneas
+            String dni = persona.getDni();
+            Optional<Registro> registro = registroRepository.findByDni(dni);
+            registro.ifPresent(registroRepository::delete);
+            
+            // Eliminar cuotas deportivas asociadas
+            cuotaRepository.deleteByPersonaId_Id(id);
+            
+            // Eliminar cuotas sociales asociadas
+            List<CuotaSocial> cuotasSociales = cuotaSocialRepository.findBySocioId(id);
+            if (cuotasSociales != null && !cuotasSociales.isEmpty()) {
+                cuotaSocialRepository.deleteAll(cuotasSociales);
             }
+            
+            // Eliminar todas las inscripciones de esta persona
+            inscripcionRepository.deleteByPersonaId_Id(id);
+
+            // Desasociar promociones y deportes (relaciones many-to-many)
+            persona.setPromocion(null);
+            persona.getDeportes().clear();
+            personaRepository.save(persona);
+            
+            // Eliminar referencias como socioResponsable de otras personas
+            List<Persona> personasDependientes = personaRepository.findAll().stream()
+                .filter(p -> p.getSocioResponsable() != null && p.getSocioResponsable().getId().equals(id))
+                .toList();
+            for(Persona p : personasDependientes){
+                p.setSocioResponsable(null);
+            }
+            
+            // Finalmente, eliminar la persona
+            personaRepository.deleteById(id);
+            return true;
         }
         return false;
+    }
+
+    private void validarElegibilidadBorradoPorError(Persona persona) {
+        Long personaId = persona.getId();
+
+        // 1. Validar que no existan pagos registrados
+        if (pagoRepository.existsBySocioId_Id(personaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MENSAJE_ERROR_BORRADO);
+        }
+
+        // 2. Validar cuotas deportivas: máximo 1 y estrictamente en estado GENERADA
+        List<Cuota> cuotasDeportivas = cuotaRepository.findByPersonaId_Id(personaId);
+        if (cuotasDeportivas != null && !cuotasDeportivas.isEmpty()) {
+            if (cuotasDeportivas.size() > 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MENSAJE_ERROR_BORRADO);
+            }
+            Cuota cuotaDeportiva = cuotasDeportivas.get(0);
+            if (cuotaDeportiva.getEstado() != EstadoCuota.GENERADA) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MENSAJE_ERROR_BORRADO);
+            }
+        }
+
+        // 3. Validar cuotas sociales: máximo 1 y estrictamente en estado PENDIENTE
+        List<CuotaSocial> cuotasSociales = cuotaSocialRepository.findBySocioId(personaId);
+        if (cuotasSociales != null && !cuotasSociales.isEmpty()) {
+            if (cuotasSociales.size() > 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MENSAJE_ERROR_BORRADO);
+            }
+            CuotaSocial cuotaSocial = cuotasSociales.get(0);
+            if (cuotaSocial.getEstado() == null || !cuotaSocial.getEstado().trim().equalsIgnoreCase("PENDIENTE")) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MENSAJE_ERROR_BORRADO);
+            }
+        }
     }
 
     // Método para revisar si la persona inactiva es responsable de un grupo familiar y disolverlo si es necesario.
@@ -285,7 +326,6 @@ public class PersonaService {
         GrupoFamiliar grupo = personaInactiva.getGrupoFamiliar();
         if (grupo == null) {
             return;
-    
         }
         boolean esResponsable = grupo.getResponsable() != null && grupo.getResponsable().getId().equals(personaInactiva.getId());
         
