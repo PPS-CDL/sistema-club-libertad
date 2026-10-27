@@ -1,14 +1,18 @@
 package com.club_libertad.services;
+
 import com.club_libertad.enums.CategoriaPersona;
 import com.club_libertad.models.ConfiguracionClub;
 import com.club_libertad.models.CuotaSocial;
 import com.club_libertad.models.GrupoFamiliar;
 import com.club_libertad.models.Persona;
+import com.club_libertad.models.Promocion;
 import com.club_libertad.repositories.CuotaSocialRepository;
 import com.club_libertad.repositories.PersonaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -28,10 +32,11 @@ public class CuotaSocialService {
         this.personaRepository = personaRepository;
         this.configuracionClubService = configuracionClubService;
     }
-@Transactional(readOnly = true)
-public List<CuotaSocial> getAllCuotasSociales() {
-    return cuotaSocialRepository.findAll();
-}
+
+    @Transactional(readOnly = true)
+    public List<CuotaSocial> getAllCuotasSociales() {
+        return cuotaSocialRepository.findAll();
+    }
 
     @Transactional
     public void prepararCambioIntegrantesGrupo(Long grupoId, boolean cambioIntegrantes) {
@@ -188,27 +193,59 @@ public List<CuotaSocial> getAllCuotasSociales() {
             // Si el responsable cambió
             if (!cuotaExistente.getSocio().getId().equals(responsable.getId())) {
                 if (cuotaExistente.getEstado().equals("PAGADA")) {
-                    // Si ya está pagada por el responsable anterior, no se hace nada (el mes está saldado)
                     return;
                 } else {
-                    // Si está PENDIENTE o VENCIDA, se cancela la del responsable viejo y se crea la nueva
                     cuotaExistente.setEstado("CANCELADA");
                     cuotaSocialRepository.save(cuotaExistente);
                     crearNuevaCuota(responsable, grupo, "FAMILIAR", periodo, monto, vencimiento);
                 }
             }
-            // Si el responsable es el mismo, ya existe la cuota, no se hace nada
         } else {
-            // No existe cuota para este grupo en este periodo
             crearNuevaCuota(responsable, grupo, "FAMILIAR", periodo, monto, vencimiento);
         }
     }
 
-    private void procesarCuotaIndividual(Persona socio, String periodo, BigDecimal monto, LocalDate vencimiento) {
+    private void procesarCuotaIndividual(Persona socio, String periodo, BigDecimal montoBase, LocalDate vencimiento) {
+        BigDecimal montoFinal = calcularMontoConPromocion(socio, montoBase);
         Optional<CuotaSocial> cuotaExistente = cuotaSocialRepository.findActivaBySocioAndPeriodo(socio.getId(), periodo);
         
         if (cuotaExistente.isEmpty()) {
-            crearNuevaCuota(socio, null, "INDIVIDUAL", periodo, monto, vencimiento);
+            crearNuevaCuota(socio, null, "INDIVIDUAL", periodo, montoFinal, vencimiento);
+        } else {
+            CuotaSocial cuota = cuotaExistente.get();
+            if (("PENDIENTE".equals(cuota.getEstado()) || "VENCIDA".equals(cuota.getEstado()))
+                    && cuota.getMonto().compareTo(montoFinal) != 0) {
+                cuota.setMonto(montoFinal);
+                cuotaSocialRepository.save(cuota);
+            }
+        }
+    }
+
+    private BigDecimal calcularMontoConPromocion(Persona socio, BigDecimal montoBase) {
+        if (socio == null || socio.getPromocion() == null || montoBase == null) {
+            return montoBase;
+        }
+
+        Promocion promo = socio.getPromocion();
+        if (promo.getDescuento() == null) {
+            return montoBase;
+        }
+
+        try {
+            BigDecimal descuentoValor = new BigDecimal(promo.getDescuento().toString());
+            String tipo = promo.getTipoDescuento() != null ? promo.getTipoDescuento().toString() : "";
+
+            BigDecimal montoFinal;
+            if ("PORCENTAJE".equalsIgnoreCase(tipo)) {
+                BigDecimal rebaja = montoBase.multiply(descuentoValor)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                montoFinal = montoBase.subtract(rebaja);
+            } else {
+                montoFinal = montoBase.subtract(descuentoValor);
+            }
+            return montoFinal.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : montoFinal;
+        } catch (Exception e) {
+            return montoBase;
         }
     }
 
