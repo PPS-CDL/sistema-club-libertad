@@ -30,10 +30,31 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
                     ELSE 0L
                 END),
                 0L
+            ) +
+            COALESCE(
+                SUM(CASE
+                    WHEN cs.estado = 'PENDIENTE'
+                      OR cs.estado = 'VENCIDA'
+                    THEN 1L
+                    ELSE 0L
+                END),
+                0L
+            ) +
+            COALESCE(
+                SUM(CASE
+                    WHEN csGrupo.estado = 'PENDIENTE'
+                      OR csGrupo.estado = 'VENCIDA'
+                    THEN 1L
+                    ELSE 0L
+                END),
+                0L
             )
         )
         FROM Persona p
         LEFT JOIN Cuota c ON c.personaId = p
+        LEFT JOIN CuotaSocial cs ON cs.socio = p
+        LEFT JOIN GrupoFamiliar gf ON gf.responsable = p
+        LEFT JOIN CuotaSocial csGrupo ON csGrupo.grupoFamiliar = gf
         WHERE p.activo = true
           AND p.categoria IN (
               com.club_libertad.enums.CategoriaPersona.SOCIO,
@@ -42,14 +63,34 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
           AND p.fechaNacimiento IS NOT NULL
           AND p.fechaNacimiento <= :fechaMinima
         GROUP BY p.id, p.apellido, p.nombre, p.dni, p.categoria, p.fechaNacimiento
-        HAVING COALESCE(
-            SUM(CASE
-                WHEN c.estado = com.club_libertad.enums.EstadoCuota.GENERADA
-                  OR c.estado = com.club_libertad.enums.EstadoCuota.VENCIDA
-                THEN 1L
-                ELSE 0L
-            END),
-            0L
+        HAVING (
+            COALESCE(
+                SUM(CASE
+                    WHEN c.estado = com.club_libertad.enums.EstadoCuota.GENERADA
+                      OR c.estado = com.club_libertad.enums.EstadoCuota.VENCIDA
+                    THEN 1L
+                    ELSE 0L
+                END),
+                0L
+            ) +
+            COALESCE(
+                SUM(CASE
+                    WHEN cs.estado = 'PENDIENTE'
+                      OR cs.estado = 'VENCIDA'
+                    THEN 1L
+                    ELSE 0L
+                END),
+                0L
+            ) +
+            COALESCE(
+                SUM(CASE
+                    WHEN csGrupo.estado = 'PENDIENTE'
+                      OR csGrupo.estado = 'VENCIDA'
+                    THEN 1L
+                    ELSE 0L
+                END),
+                0L
+            )
         ) <= 3
         """)
     List<PersonaAsambleaDTO> findPersonasParaAsamblea(@Param("fechaMinima") LocalDate fechaMinima);
