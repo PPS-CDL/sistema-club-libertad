@@ -4,7 +4,6 @@ import com.club_libertad.models.Pago;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.data.jpa.repository.Query;
-import java.util.List;
 import com.club_libertad.dtos.IngresoPorSocioDTO;
 
 import java.time.LocalDate;
@@ -13,6 +12,8 @@ import java.util.List;
 @Repository
 public interface PagoRepository extends JpaRepository<Pago, Long> {
     
+    boolean existsBySocioId_Id(Long socioId);
+
     void deleteBySocioId_Id(Long socioId);
 
     @Query("""
