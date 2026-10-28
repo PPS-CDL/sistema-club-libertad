@@ -24,8 +24,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
             p.fechaNacimiento,
             COALESCE(
                 SUM(CASE
-                    WHEN c.estado = com.club_libertad.enums.EstadoCuota.GENERADA
-                      OR c.estado = com.club_libertad.enums.EstadoCuota.VENCIDA
+                    WHEN cs.estado = 'PENDIENTE'
+                      OR cs.estado = 'VENCIDA'
                     THEN 1L
                     ELSE 0L
                 END),
@@ -51,10 +51,18 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
             )
         )
         FROM Persona p
+<<<<<<< Updated upstream
         LEFT JOIN Cuota c ON c.personaId = p
         LEFT JOIN CuotaSocial cs ON cs.socio = p
         LEFT JOIN GrupoFamiliar gf ON gf.responsable = p
         LEFT JOIN CuotaSocial csGrupo ON csGrupo.grupoFamiliar = gf
+=======
+        LEFT JOIN CuotaSocial cs ON (
+            (cs.tipoCuota = 'INDIVIDUAL' AND cs.socio = p)
+            OR
+            (cs.tipoCuota = 'FAMILIAR' AND p.grupoFamiliar IS NOT NULL AND cs.grupoFamiliar = p.grupoFamiliar)
+        )
+>>>>>>> Stashed changes
         WHERE p.activo = true
           AND p.categoria IN (
               com.club_libertad.enums.CategoriaPersona.SOCIO,
@@ -63,6 +71,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
           AND p.fechaNacimiento IS NOT NULL
           AND p.fechaNacimiento <= :fechaMinima
         GROUP BY p.id, p.apellido, p.nombre, p.dni, p.categoria, p.fechaNacimiento
+<<<<<<< Updated upstream
         HAVING (
             COALESCE(
                 SUM(CASE
@@ -91,6 +100,16 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
                 END),
                 0L
             )
+=======
+        HAVING COALESCE(
+            SUM(CASE
+                WHEN cs.estado = 'PENDIENTE'
+                  OR cs.estado = 'VENCIDA'
+                THEN 1L
+                ELSE 0L
+            END),
+            0L
+>>>>>>> Stashed changes
         ) <= 3
         """)
     List<PersonaAsambleaDTO> findPersonasParaAsamblea(@Param("fechaMinima") LocalDate fechaMinima);
