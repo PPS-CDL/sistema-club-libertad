@@ -1,5 +1,5 @@
 package com.club_libertad.models;
-
+import com.club_libertad.models.CuotaSocial;
 import com.club_libertad.enums.MetodoPago;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -16,7 +16,7 @@ import java.util.List;
     @Index(name = "idx_pago_fecha_pago", columnList = "fecha_pago")
 })
 @Data
-@EqualsAndHashCode(exclude = {"cuotas"})
+@EqualsAndHashCode(exclude = {"cuotas", "cuotasSociales"})
 @NoArgsConstructor
 public class Pago {
     @Id
@@ -53,5 +53,14 @@ public class Pago {
     @com.fasterxml.jackson.annotation.JsonProperty("cuotasIds")
     public List<Long> getCuotasIds() {
         return cuotas != null ? cuotas.stream().map(Cuota::getId).toList() : null;
+    }
+    // Cuota social independiente
+    @JsonIgnore
+    @OneToMany(mappedBy = "pago", fetch = FetchType.LAZY)
+    private List<CuotaSocial> cuotasSociales;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("cuotaSocialIds")
+    public List<Long> getCuotaSocialIds() {
+        return cuotasSociales != null ? cuotasSociales.stream().map(CuotaSocial::getId).toList() : null;
     }
 }

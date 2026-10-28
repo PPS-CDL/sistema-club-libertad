@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -15,9 +16,11 @@ import java.util.Set;
 @Service
 public class DeporteService {
     private final DeporteRepository deporteRepository;
+    private final ConfiguracionClubService configuracionClubService;
     
-    public DeporteService(DeporteRepository deporteRepository) {
+    public DeporteService(DeporteRepository deporteRepository, ConfiguracionClubService configuracionClubService) {
         this.deporteRepository = deporteRepository;
+        this.configuracionClubService = configuracionClubService;
     }
 
     @Transactional(readOnly = true)
@@ -37,7 +40,9 @@ public class DeporteService {
         deporteCreate.setDescripcion(deporteTransfer.getDescripcion());
         BigDecimal cuotaEntrenador = deporteTransfer.getCuotaEntrenador() != null ? deporteTransfer.getCuotaEntrenador() : BigDecimal.ZERO;
         BigDecimal cuotaSeguro = deporteTransfer.getCuotaSeguro() != null ? deporteTransfer.getCuotaSeguro() : BigDecimal.ZERO;
-        BigDecimal cuotaSocial = deporteTransfer.getCuotaSocial() != null ? deporteTransfer.getCuotaSocial() : BigDecimal.ZERO;
+        BigDecimal cuotaSocial = esPostTransicion()
+            ? BigDecimal.ZERO
+            : deporteTransfer.getCuotaSocial() != null ? deporteTransfer.getCuotaSocial() : BigDecimal.ZERO;
 
         deporteCreate.setCuotaEntrenador(cuotaEntrenador);
         deporteCreate.setCuotaSeguro(cuotaSeguro);
@@ -50,21 +55,30 @@ public class DeporteService {
     @Transactional
     public boolean updateDeporte(Long id, Deporte deporteUpdate){
         boolean b = false;
-        Optional<Deporte> deporte = getDeporteById(id);
-        if(deporte.isPresent()){
-            if(deporteUpdate.getNombre() != null) deporte.get().setNombre(deporteUpdate.getNombre());
-            if(deporteUpdate.getDescripcion() != null) deporte.get().setDescripcion(deporteUpdate.getDescripcion());
-            if(deporteUpdate.getCuotaEntrenador() != null) deporte.get().setCuotaEntrenador(deporteUpdate.getCuotaEntrenador());
-            if(deporteUpdate.getCuotaSeguro() != null) deporte.get().setCuotaSeguro(deporteUpdate.getCuotaSeguro());
-            if(deporteUpdate.getCuotaSocial() != null) deporte.get().setCuotaSocial(deporteUpdate.getCuotaSocial());
+        Optional<Deporte> deporteOpt = getDeporteById(id);
+        if(deporteOpt.isPresent()){
+          Deporte deporte = deporteOpt.get();
+            if(deporteUpdate.getNombre() != null) deporte.setNombre(deporteUpdate.getNombre());
+            if(deporteUpdate.getDescripcion() != null) deporte.setDescripcion(deporteUpdate.getDescripcion());
+            if(deporteUpdate.getCuotaEntrenador() != null) deporte.setCuotaEntrenador(deporteUpdate.getCuotaEntrenador());
+            if(deporteUpdate.getCuotaSeguro() != null) deporte.setCuotaSeguro(deporteUpdate.getCuotaSeguro());
 
-            BigDecimal cuotaEntrenador = deporte.get().getCuotaEntrenador() != null ? deporte.get().getCuotaEntrenador() : BigDecimal.ZERO;
-            BigDecimal cuotaSeguro = deporte.get().getCuotaSeguro() != null ? deporte.get().getCuotaSeguro() : BigDecimal.ZERO;
-            BigDecimal cuotaSocial = deporte.get().getCuotaSocial() != null ? deporte.get().getCuotaSocial() : BigDecimal.ZERO;
-            deporte.get().setCuotaMensual(cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial));
+            // REGLA: No se actualiza la cuota social del deporte en esta operación. 
+            // La cuota social se mantiene para preservar la coherencia histórica de las cuotas ya generadas antes de la transición.
+            BigDecimal cuotaEntrenador = deporte.getCuotaEntrenador() != null ? deporte.getCuotaEntrenador() : BigDecimal.ZERO;
+            BigDecimal cuotaSeguro = deporte.getCuotaSeguro() != null ? deporte.getCuotaSeguro() : BigDecimal.ZERO;
+            BigDecimal cuotaSocialHistorica = deporte.getCuotaSocial() != null ? deporte.getCuotaSocial() : BigDecimal.ZERO;
+            
+            BigDecimal cuotaSocialVigente = esPostTransicion() ? BigDecimal.ZERO : cuotaSocialHistorica;
+            deporte.setCuotaMensual(cuotaEntrenador.add(cuotaSeguro).add(cuotaSocialVigente));
             b = true;
         }
         return b;
+    }
+
+    private boolean esPostTransicion() {
+        LocalDate fechaEfectiva = configuracionClubService.getConfiguracion().getFechaEfectiva();
+        return fechaEfectiva != null && !LocalDate.now().withDayOfMonth(1).isBefore(fechaEfectiva);
     }
 
     @Transactional

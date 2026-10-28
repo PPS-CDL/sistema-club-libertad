@@ -20,6 +20,19 @@ export interface CrearPagoPayload {
   metodoPago: "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO";
   observaciones?: string;
   cuotaIds: number[];
+  cuotaSocialIds: number[];
+}
+
+export interface PagoDTO {
+  socioId: number;
+  fechaPago: string;
+  montoOriginal: number;
+  montoDescuento?: number;
+  montoTotal: number;
+  metodoPago: string;
+  observaciones?: string;
+  cuotaIds?: number[];
+  cuotaSocialIds?: number[]; // Soporte para enviar las cuotas sociales
 }
 
 export interface IngresoPorSocioDTO {

@@ -1,5 +1,4 @@
 package com.club_libertad.services;
-
 import com.club_libertad.dtos.IngresoPorSocioDTO;
 import com.club_libertad.dtos.IngresosPorDeporteDTO;
 import com.club_libertad.dtos.ResumenMensualPorDeporteDTO;
@@ -14,7 +13,6 @@ import com.club_libertad.repositories.DeporteRepository;
 import com.club_libertad.repositories.PagoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -26,11 +24,15 @@ public class PagoService {
     private final PagoRepository pagoRepository;
     private final CuotaRepository cuotaRepository;
     private final DeporteRepository deporteRepository;
-    
-    public PagoService(PagoRepository pagoRepository, CuotaRepository cuotaRepository, DeporteRepository deporteRepository) {
+    private final com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository;
+    private final com.club_libertad.repositories.PersonaRepository personaRepository;
+
+    public PagoService(PagoRepository pagoRepository, CuotaRepository cuotaRepository, DeporteRepository deporteRepository, com.club_libertad.repositories.CuotaSocialRepository cuotaSocialRepository, com.club_libertad.repositories.PersonaRepository personaRepository) {
         this.pagoRepository = pagoRepository;
         this.cuotaRepository = cuotaRepository;
         this.deporteRepository = deporteRepository;
+        this.cuotaSocialRepository = cuotaSocialRepository;
+        this.personaRepository = personaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -41,52 +43,97 @@ public class PagoService {
 
     @Transactional
     public Optional<Long> savePago(PagoDTO pagoTransfer){
-        Pago pagoCreate = new Pago();
-        Persona socioExisting = new Persona();
-        socioExisting.setId(pagoTransfer.getSocioId());
-        pagoCreate.setSocioId(socioExisting);
-        pagoCreate.setFechaPago(pagoTransfer.getFechaPago());
-        if(pagoTransfer.getMetodoPago() != null) pagoCreate.setMetodoPago(pagoTransfer.getMetodoPago());
-        if(pagoTransfer.getObservaciones() != null) pagoCreate.setObservaciones(pagoTransfer.getObservaciones());
-        
+        if (pagoTransfer == null || pagoTransfer.getSocioId() == null || pagoTransfer.getFechaPago() == null) {
+            throw new IllegalArgumentException("El socio y la fecha del pago son obligatorios.");
+        }
+
+        List<Long> cuotaIds = pagoTransfer.getCuotaIds() == null ? List.of() : pagoTransfer.getCuotaIds();
+        List<Long> cuotaSocialIds = pagoTransfer.getCuotaSocialIds() == null ? List.of() : pagoTransfer.getCuotaSocialIds();
+        validarIdsUnicos(cuotaIds, "deportivas");
+        validarIdsUnicos(cuotaSocialIds, "sociales");
+        if (cuotaIds.isEmpty() && cuotaSocialIds.isEmpty()) {
+            throw new IllegalArgumentException("El pago debe incluir al menos una cuota.");
+        }
+
+        Persona socio = personaRepository.findById(pagoTransfer.getSocioId())
+                .orElseThrow(() -> new IllegalArgumentException("El socio indicado no existe."));
+
+        List<Cuota> cuotasDeportivas = new ArrayList<>();
+        for (Long cuotaId : cuotaIds.stream().sorted().toList()) {
+            Cuota cuota = cuotaRepository.findByIdForUpdate(cuotaId)
+                    .orElseThrow(() -> new IllegalArgumentException("No existe la cuota deportiva " + cuotaId + "."));
+            if (!cuota.getPersonaId().getId().equals(socio.getId())) {
+                throw new IllegalArgumentException("La cuota deportiva no pertenece al socio indicado.");
+            }
+            if (cuota.getEstado() == EstadoCuota.PAGADA || cuota.getPagoId() != null) {
+                throw new IllegalArgumentException("La cuota deportiva ya fue pagada.");
+            }
+            cuotasDeportivas.add(cuota);
+        }
+
+        List<com.club_libertad.models.CuotaSocial> cuotasSociales = new ArrayList<>();
+        for (Long cuotaSocialId : cuotaSocialIds.stream().sorted().toList()) {
+            com.club_libertad.models.CuotaSocial cuotaSocial = cuotaSocialRepository.findByIdForUpdate(cuotaSocialId)
+                    .orElseThrow(() -> new IllegalArgumentException("No existe la cuota social " + cuotaSocialId + "."));
+            if (!cuotaSocial.getSocio().getId().equals(socio.getId())) {
+                throw new IllegalArgumentException("La cuota social no pertenece al socio indicado.");
+            }
+            if ("PAGADA".equals(cuotaSocial.getEstado()) || "CANCELADA".equals(cuotaSocial.getEstado())
+                    || cuotaSocial.getPagoId() != null) {
+                throw new IllegalArgumentException("La cuota social ya no está pendiente de pago.");
+            }
+            cuotasSociales.add(cuotaSocial);
+        }
+
         BigDecimal totalEntrenador = BigDecimal.ZERO;
         BigDecimal totalSeguro = BigDecimal.ZERO;
         BigDecimal totalSocial = BigDecimal.ZERO;
-        BigDecimal montoTotalConDescuento = BigDecimal.ZERO;
-        
-        if(pagoTransfer.getCuotaIds() != null && !pagoTransfer.getCuotaIds().isEmpty()) {
-            for(Long cuotaId : pagoTransfer.getCuotaIds()) {
-                Optional<Cuota> cuotaOpt = cuotaRepository.findById(cuotaId);
-                if(cuotaOpt.isPresent()) {
-                    Cuota cuota = cuotaOpt.get();
-                    totalEntrenador = totalEntrenador.add(cuota.getCuotaEntrenador() != null ? cuota.getCuotaEntrenador() : BigDecimal.ZERO);
-                    totalSeguro = totalSeguro.add(cuota.getCuotaSeguro() != null ? cuota.getCuotaSeguro() : BigDecimal.ZERO);
-                    totalSocial = totalSocial.add(cuota.getCuotaSocial() != null ? cuota.getCuotaSocial() : BigDecimal.ZERO);
-                    montoTotalConDescuento = montoTotalConDescuento.add(cuota.getMonto() != null ? cuota.getMonto() : BigDecimal.ZERO);
-                }
-            }
+        BigDecimal montoTotal = BigDecimal.ZERO;
+        for (Cuota cuota : cuotasDeportivas) {
+            totalEntrenador = totalEntrenador.add(valorOZero(cuota.getCuotaEntrenador()));
+            totalSeguro = totalSeguro.add(valorOZero(cuota.getCuotaSeguro()));
+            totalSocial = totalSocial.add(valorOZero(cuota.getCuotaSocial()));
+            montoTotal = montoTotal.add(valorOZero(cuota.getMonto()));
         }
-        
+        for (com.club_libertad.models.CuotaSocial cuotaSocial : cuotasSociales) {
+            totalSocial = totalSocial.add(valorOZero(cuotaSocial.getMonto()));
+            montoTotal = montoTotal.add(valorOZero(cuotaSocial.getMonto()));
+        }
+
+        Pago pagoCreate = new Pago();
+        pagoCreate.setSocioId(socio);
+        pagoCreate.setFechaPago(pagoTransfer.getFechaPago());
+        pagoCreate.setMetodoPago(pagoTransfer.getMetodoPago());
+        pagoCreate.setObservaciones(pagoTransfer.getObservaciones());
         pagoCreate.setCuotaEntrenador(totalEntrenador);
         pagoCreate.setCuotaSeguro(totalSeguro);
         pagoCreate.setCuotaSocial(totalSocial);
-        pagoCreate.setMontoTotal(montoTotalConDescuento);
-        
+        pagoCreate.setMontoTotal(montoTotal);
         Pago pagoCreated = pagoRepository.save(pagoCreate);
-        
-        if(pagoTransfer.getCuotaIds() != null && !pagoTransfer.getCuotaIds().isEmpty()) {
-            for(Long cuotaId : pagoTransfer.getCuotaIds()) {
-                Optional<Cuota> cuotaOpt = cuotaRepository.findById(cuotaId);
-                if(cuotaOpt.isPresent()) {
-                    Cuota cuota = cuotaOpt.get();
-                    cuota.setPagoId(pagoCreated);
-                    cuota.setEstado(EstadoCuota.PAGADA);
-                    cuotaRepository.save(cuota);
-                }
-            }
+
+        for (Cuota cuota : cuotasDeportivas) {
+            cuota.setPagoId(pagoCreated);
+            cuota.setEstado(EstadoCuota.PAGADA);
         }
-        
+        cuotaRepository.saveAll(cuotasDeportivas);
+            if (!cuotasDeportivas.isEmpty()) cuotaRepository.saveAll(cuotasDeportivas);
+        for (com.club_libertad.models.CuotaSocial cuotaSocial : cuotasSociales) {
+            cuotaSocial.setPagoId(pagoCreated.getId());
+            cuotaSocial.setEstado("PAGADA");
+        }
+        if (!cuotasSociales.isEmpty()) cuotaSocialRepository.saveAll(cuotasSociales);
+
         return Optional.of(pagoCreated.getId());
+    }
+
+    private void validarIdsUnicos(List<Long> ids, String tipo) {
+        if (ids.stream().anyMatch(Objects::isNull) || new HashSet<>(ids).size() != ids.size()) {
+            throw new IllegalArgumentException("Los IDs de cuotas " + tipo + " son inválidos o están repetidos.");
+        }
+    }
+
+    private BigDecimal valorOZero(BigDecimal valor) {
+        return valor != null ? valor : BigDecimal.ZERO;
     }
 
     @Transactional(readOnly = true)
@@ -174,6 +221,19 @@ public class PagoService {
                     montoTotal
             ));
         }
+        // Si no se especifica un deporte, también se incluyen los ingresos de las cuotas sociales independientes
+        if (deporteId == null) {
+            List<com.club_libertad.models.CuotaSocial> cuotasSociales = cuotaSocialRepository
+                .findCobradasPorFecha(fecha, fechaDesde, fechaHasta);
+            BigDecimal totalSocialIndependiente = cuotasSociales.stream()
+                .map(cuota -> valorOZero(cuota.getMonto()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (!cuotasSociales.isEmpty()) {
+            resultado.add(new IngresosPorDeporteDTO(
+                        0L, "Cuota Social", (long) cuotasSociales.size(), totalSocialIndependiente,
+                BigDecimal.ZERO, BigDecimal.ZERO, totalSocialIndependiente));
+            }
+        }
 
         resultado.sort(Comparator.comparing(IngresosPorDeporteDTO::getNombreDeporte, String.CASE_INSENSITIVE_ORDER));
         return resultado;
@@ -202,7 +262,7 @@ public class PagoService {
             deportesAProcesar = deporteRepository.findAll();
         }
 
-        return deportesAProcesar.stream().map(dep -> {
+        List<ResumenMensualPorDeporteDTO> resultado = new ArrayList<>(deportesAProcesar.stream().map(dep -> {
             List<Cuota> cuotasDep = cuotasPorDeporte.getOrDefault(dep.getId(), List.of());
 
             long sociosAlDia = cuotasDep.stream()
@@ -256,7 +316,40 @@ public class PagoService {
                     .adeudadoEntrenador(adeudadoEntrenador)
                     .adeudadoSeguro(adeudadoSeguro)
                     .build();
-        }).toList();
+        }).toList());
+
+        if (deporteId == null) {
+            String periodo = String.format("%04d-%02d", anio, mes);
+            List<com.club_libertad.models.CuotaSocial> cuotasSociales = cuotaSocialRepository.findByPeriodo(periodo).stream()
+                .filter(cuota -> !"CANCELADA".equals(cuota.getEstado()))
+                .toList();
+            if (!cuotasSociales.isEmpty()) {
+            List<com.club_libertad.models.CuotaSocial> pagadas = cuotasSociales.stream()
+                .filter(cuota -> "PAGADA".equals(cuota.getEstado())).toList();
+            List<com.club_libertad.models.CuotaSocial> adeudadas = cuotasSociales.stream()
+                .filter(cuota -> "PENDIENTE".equals(cuota.getEstado()) || "VENCIDA".equals(cuota.getEstado()))
+                .toList();
+            BigDecimal totalCobradoSocial = pagadas.stream()
+                .map(cuota -> valorOZero(cuota.getMonto())).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal totalAdeudadoSocial = adeudadas.stream()
+                .map(cuota -> valorOZero(cuota.getMonto())).reduce(BigDecimal.ZERO, BigDecimal::add);
+            resultado.add(ResumenMensualPorDeporteDTO.builder()
+                .deporteId(0L)
+                .nombreDeporte("Cuota Social")
+                .sociosAlDia(pagadas.stream().map(cuota -> cuota.getSocio().getId()).distinct().count())
+                .sociosDeudores(adeudadas.stream().map(cuota -> cuota.getSocio().getId()).distinct().count())
+                .totalCobrado(totalCobradoSocial)
+                .totalAdeudado(totalAdeudadoSocial)
+                .cobradoSocial(totalCobradoSocial)
+                .cobradoEntrenador(BigDecimal.ZERO)
+                .cobradoSeguro(BigDecimal.ZERO)
+                .adeudadoSocial(totalAdeudadoSocial)
+                .adeudadoEntrenador(BigDecimal.ZERO)
+                .adeudadoSeguro(BigDecimal.ZERO)
+                .build());
+            }
+        }
+        return resultado;
     }
 
     private static class DesgloseProrrateado {

@@ -104,7 +104,9 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
 
 export function SociosModule({ userRole }: SociosModuleProps) {
   const [socios, setSocios] = useState<Socio[]>([]);
-  const [padronAsamblea, setPadronAsamblea] = useState<PersonaAsambleaDTO[]>([]);
+  const [padronAsamblea, setPadronAsamblea] = useState<PersonaAsambleaDTO[]>(
+    [],
+  );
   const [expandedSocioId, setExpandedSocioId] = useState<string | null>(null);
   const [cuotasPorSocio, setCuotasPorSocio] = useState<Record<string, Cuota[]>>(
     {},
@@ -139,7 +141,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [registroDuplicado, setRegistroDuplicado] = useState<Registro | null>(
     null,
   );
-  const [pendingSocioData, setPendingSocioData] = useState<any | null>(null);
   const [isRegistroDialogOpen, setIsRegistroDialogOpen] = useState(false);
   const [socioToAltaBaja, setSocioToAltaBaja] = useState<Socio | null>(null);
   const [isAltaBajaDialogOpen, setIsAltaBajaDialogOpen] = useState(false);
@@ -254,7 +255,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const exportarAsambleaCSV = () => {
     if (!padronAsamblea.length) return;
 
-    const headers = ["Apellido y Nombre", "DNI", "Categoría", "Edad", "Morosidad"];
+    const headers = [
+      "Apellido y Nombre",
+      "DNI",
+      "Categoría",
+      "Edad",
+      "Morosidad",
+    ];
     const rows = padronAsamblea.map((persona) => {
       const morosidad =
         persona.cuotasAdeudadas === 0
@@ -325,11 +332,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
             : undefined,
         responsableDni: responsable?.dni,
         estado: persona.activo ? "activo" : "inactivo",
-        //=========================================================================
-        // Asegurarse de que deportes sea un array SACAR CUANDO EL BACKEND LO TENGA
-        deportes: Array.isArray(persona.deportes) ? persona.deportes : [], // <-- default
-        // Asegurarse de que deportes sea un array SACAR CUANDO EL BACKEND LO TENGA
-        //=========================================================================
+        deportes: Array.isArray(persona.deportes) ? persona.deportes : [],
       };
     });
   };
@@ -393,29 +396,33 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   }, []);
 
   // Filtros
-  const filteredSocios = socios.filter((socio) => {
-    const matchesActive =
-      (activeFilter === "activos" && socio.activo) ||
-      (activeFilter === "inactivos" && !socio.activo);
+  const filteredSocios = socios
+    .filter((socio) => {
+      const matchesActive =
+        (activeFilter === "activos" && socio.activo) ||
+        (activeFilter === "inactivos" && !socio.activo);
 
-    const matchesSearch =
-      socio.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      socio.apellido.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      socio.dni.includes(searchTerm);
+      const matchesSearch =
+        socio.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        socio.apellido.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        socio.dni.includes(searchTerm);
 
-    const matchesCategoria =
-      filterCategoria === "all" ||
-      (filterCategoria === "socio" && socio.categoria === "SOCIO") ||
-      (filterCategoria === "jugador" && socio.categoria === "JUGADOR") ||
-      (filterCategoria === "socio y jugador" &&
-        socio.categoria === "SOCIOYJUGADOR");
+      const matchesCategoria =
+        filterCategoria === "all" ||
+        (filterCategoria === "socio" && socio.categoria === "SOCIO") ||
+        (filterCategoria === "jugador" && socio.categoria === "JUGADOR") ||
+        (filterCategoria === "socio y jugador" &&
+          socio.categoria === "SOCIOYJUGADOR");
 
-    const deportesNombres = getDeportesNombres(socio.deportesIds);
-    const matchesDeporte =
-      filterDeporte === "all" || deportesNombres.includes(filterDeporte);
+      const deportesNombres = getDeportesNombres(socio.deportesIds);
+      const matchesDeporte =
+        filterDeporte === "all" || deportesNombres.includes(filterDeporte);
 
-    return matchesActive && matchesSearch && matchesCategoria && matchesDeporte;
-  });
+      return (
+        matchesActive && matchesSearch && matchesCategoria && matchesDeporte
+      );
+    })
+    .sort((a, b) => Number(b.id) - Number(a.id));
 
   const filteredHistorial = historialRegistros
     .filter((registro) => {
@@ -428,12 +435,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     })
     .filter((registro) => {
       if (historialFilter === "activos") {
-        return !registro.fechaBaja; // activos: sin fecha de baja
+        return !registro.fechaBaja;
       }
       if (historialFilter === "inactivos") {
-        return !!registro.fechaBaja; // dados de baja: con fecha de baja
+        return !!registro.fechaBaja;
       }
-      return true; // 'todos'
+      return true;
     });
 
   // Abrir diálogo para crear/editar
@@ -550,23 +557,14 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
     try {
       if (editingSocio) {
-        toast.promise(
-          personaService.update(parseInt(editingSocio.id), socioData),
-          {
-            loading: "Actualizando socio...",
-            success: "¡Socio actualizado correctamente!",
-            error: "No se pudo actualizar al socio",
-          },
-        );
+        await personaService.update(parseInt(editingSocio.id), socioData);
+        toast.success("¡Socio actualizado correctamente!");
       } else {
-        toast.promise(personaService.create(socioData), {
-          loading: "Registrando nuevo socio...",
-          success: "¡Socio registrado correctamente!",
-          error: "No se pudo regitrar al socio",
-        });
+        await personaService.create(socioData);
+        toast.success("¡Socio registrado correctamente!");
       }
 
-      // Recargar la lista
+      // Recargar la lista garantizando que la base de datos ya completó la operación
       const response = await personaService.getAll();
       const personas = response.data;
       const sociosActualizados = mapPersonasToSocios(personas);
@@ -580,52 +578,24 @@ export function SociosModule({ userRole }: SociosModuleProps) {
         responsableApellido: "",
         responsableDni: "",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al guardar socio:", error);
-      const status = (error as any)?.response?.status;
-      const data = (error as any)?.response?.data;
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+
+      const errorMessage =
+        data?.message ||
+        (typeof data === "string" && data.trim().length > 0 ? data : null) ||
+        (editingSocio
+          ? "Error al actualizar socio"
+          : "Error al registrar socio");
+
+      toast.error(errorMessage);
+
       if (status === 409 && data?.registro) {
         setRegistroDuplicado(data.registro as Registro);
-        setPendingSocioData(socioData);
         setIsRegistroDialogOpen(true);
-        return;
       }
-      const message = data;
-      toast.error(
-        typeof message === "string" && message.trim().length > 0
-          ? message
-          : editingSocio
-            ? "Error al actualizar socio"
-            : "Error al registrar socio",
-      );
-    }
-  };
-
-  const handleConfirmRegistro = async () => {
-    if (!pendingSocioData) return;
-    try {
-      await personaService.create({
-        ...pendingSocioData,
-        usarRegistroExistente: true,
-      });
-      toast.success("Socio registrado correctamente");
-      const response = await personaService.getAll();
-      const personas = response.data;
-      setSocios(mapPersonasToSocios(personas));
-      setIsDialogOpen(false);
-      setFormData({
-        categoria: "SOCIO",
-        estado: "activo",
-        responsableNombre: "",
-        responsableApellido: "",
-        responsableDni: "",
-      });
-      setIsRegistroDialogOpen(false);
-      setRegistroDuplicado(null);
-      setPendingSocioData(null);
-    } catch (err) {
-      console.error("Error al registrar socio con registro existente:", err);
-      toast.error("Error al registrar socio");
     }
   };
 
@@ -647,18 +617,32 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const handleConfirmDelete = async () => {
     if (socioToDelete) {
       try {
-        await personaService.delete(
-          parseInt(socioToDelete.id),
-          observacionBaja || undefined,
-        );
+        await personaService.delete(parseInt(socioToDelete.id));
         setSocios(socios.filter((s) => s.id !== socioToDelete.id));
         setIsDeleteDialogOpen(false);
         setSocioToDelete(null);
         setObservacionBaja("");
-        toast.success("Socio eliminado correctamente");
-      } catch (error) {
+        toast.success("Registro anulado y socio eliminado correctamente");
+      } catch (error: any) {
         console.error("Error al eliminar socio:", error);
-        toast.error("Error al eliminar socio");
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        let mensaje = "Error al eliminar socio";
+
+        if (status === 409) {
+          mensaje =
+            (typeof data === "string" && data.trim().length > 0
+              ? data
+              : null) ||
+            data?.message ||
+            "No se permite el borrado de socios con cuotas pagas, solo se pueden borrar socios recién registrados por error";
+        } else if (typeof data === "string" && data.trim().length > 0) {
+          mensaje = data;
+        } else if (data?.message) {
+          mensaje = data.message;
+        }
+
+        toast.error(mensaje);
       }
     }
   };
@@ -692,6 +676,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     const socioADarAltaBaja = socios.find((s) => s.id === id);
     if (socioADarAltaBaja) {
       setSocioToAltaBaja(socioADarAltaBaja);
+      setObservacionBaja("");
       setIsAltaBajaDialogOpen(true);
     }
   };
@@ -1044,7 +1029,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       onChange={(e) => {
                         const val = e.target.value;
                         setFormData({ ...formData, telefono: val });
-                        // El teléfono suele ser opcional, validamos solo si hay algo escrito
                         setFormErrors((prev) => ({
                           ...prev,
                           telefono: val.length > 0 && !TEL_REGEX.test(val),
@@ -1068,7 +1052,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       onChange={(e) => {
                         const val = e.target.value;
                         setFormData({ ...formData, correo: val });
-                        // Validamos solo si hay algo escrito
                         setFormErrors((prev) => ({
                           ...prev,
                           email: val.length > 0 && !EMAIL_REGEX.test(val),
@@ -1309,24 +1292,20 @@ export function SociosModule({ userRole }: SociosModuleProps) {
             >
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Eliminar Socio</DialogTitle>
+                  <DialogTitle>Anular Registro de Socio</DialogTitle>
                   <DialogDescription>
-                    ¿Estás seguro de que deseas eliminar a{" "}
-                    {socioToDelete?.apellido}, {socioToDelete?.nombre}?
+                    ¿Estás seguro de que deseas anular la carga de{" "}
+                    <span className="font-semibold text-foreground">
+                      {socioToDelete?.apellido}, {socioToDelete?.nombre}
+                    </span>
+                    ?
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="observacionBaja">
-                      Observación de Baja (opcional)
-                    </Label>
-                    <Input
-                      id="observacionBaja"
-                      placeholder="Ej: Traslado a otra ciudad, cambio de trabajo..."
-                      value={observacionBaja}
-                      onChange={(e) => setObservacionBaja(e.target.value)}
-                      className="mt-2"
-                    />
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800">
+                    Esta acción es irreversible y eliminará la ficha junto con
+                    su cuota generada inicial. Solo se permite para socios
+                    recién registrados por error sin pagos realizados.
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button
@@ -1336,61 +1315,129 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       Cancelar
                     </Button>
                     <Button variant="destructive" onClick={handleConfirmDelete}>
-                      Eliminar
+                      Anular y Eliminar
                     </Button>
                   </div>
                 </div>
               </DialogContent>
             </Dialog>
 
+            {/* Dialog Informativo de Socio Ya Registrado */}
             <Dialog
               open={isRegistroDialogOpen}
               onOpenChange={setIsRegistroDialogOpen}
             >
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Persona ya registrada</DialogTitle>
+                  <DialogTitle className="text-amber-600">
+                    Socio ya registrado
+                  </DialogTitle>
                   <DialogDescription>
                     {registroDuplicado?.dni
-                      ? `Esta persona ya se encuentra en el registro (DNI: ${registroDuplicado.dni}).`
-                      : "Esta persona ya se encuentra en el registro."}
+                      ? `Ya existe un socio en el club con el DNI ${registroDuplicado.dni}.`
+                      : "Esta persona ya se encuentra registrada en el club."}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <div>
-                      <span className="font-semibold">Apellido:</span>{" "}
-                      {registroDuplicado?.apellido || "-"}
+                {(() => {
+                  const socioExistente = registroDuplicado?.dni
+                    ? socios.find((s) => s.dni === registroDuplicado.dni)
+                    : null;
+                  const deportesSocio = socioExistente
+                    ? getDeportesNombres(socioExistente.deportesIds)
+                    : [];
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border bg-slate-50 p-3 text-sm space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground font-medium">
+                            Apellido y Nombre:
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {registroDuplicado?.apellido ||
+                              socioExistente?.apellido}
+                            ,{" "}
+                            {registroDuplicado?.nombre ||
+                              socioExistente?.nombre}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground font-medium">
+                            DNI:
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {registroDuplicado?.dni}
+                          </span>
+                        </div>
+                        {socioExistente && (
+                          <>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground font-medium">
+                                Categoría:
+                              </span>
+                              <Badge variant="outline">
+                                {getCategoriaLabel(socioExistente.categoria)}
+                              </Badge>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground font-medium">
+                                Estado:
+                              </span>
+                              <Badge
+                                variant={
+                                  socioExistente.activo
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {socioExistente.activo ? "Activo" : "Inactivo"}
+                              </Badge>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between items-start pt-1 border-t">
+                          <span className="text-muted-foreground font-medium">
+                            Actividades / Deportes:
+                          </span>
+                          <div className="text-right">
+                            {deportesSocio.length > 0 ? (
+                              <div className="flex flex-wrap justify-end gap-1 max-w-[200px]">
+                                {deportesSocio.map((dep) => (
+                                  <Badge
+                                    key={dep}
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    {dep}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs font-semibold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
+                                Solo socio
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsRegistroDialogOpen(false);
+                            setRegistroDuplicado(null);
+                          }}
+                        >
+                          Entendido
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-semibold">Nombre:</span>{" "}
-                      {registroDuplicado?.nombre || "-"}
-                    </div>
-                    <div>
-                      <span className="font-semibold">DNI:</span>{" "}
-                      {registroDuplicado?.dni || "-"}
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    ¿Desea crear la persona usando los datos del registro y
-                    completar con los datos ingresados?
-                  </p>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsRegistroDialogOpen(false);
-                        setRegistroDuplicado(null);
-                        setPendingSocioData(null);
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button onClick={handleConfirmRegistro}>Aceptar</Button>
-                  </div>
-                </div>
+                  );
+                })()}
               </DialogContent>
             </Dialog>
+
             {/* Dialog de Confirmación de Alta/Baja */}
             <Dialog
               open={isAltaBajaDialogOpen}
@@ -1561,9 +1608,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </TableRow>
                     ) : (
                       filteredSocios.map((socio) => (
-                        <>
+                        <Fragment key={socio.id}>
                           <TableRow
-                            key={socio.id}
                             onClick={() => toggleExpandSocio(socio.id)}
                             className="cursor-pointer hover:bg-muted/50"
                           >
@@ -1606,28 +1652,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 <div className="text-gray-500">
                                   {socio?.email || "Sin email"}
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {getDeportesNombres(socio.deportesIds).length >
-                                0 ? (
-                                  getDeportesNombres(socio.deportesIds).map(
-                                    (deporte, idx) => (
-                                      <Badge
-                                        key={idx}
-                                        variant="secondary"
-                                        className="text-xs"
-                                      >
-                                        {deporte}
-                                      </Badge>
-                                    ),
-                                  )
-                                ) : (
-                                  <span className="text-sm text-gray-400">
-                                    Sin deportes
-                                  </span>
-                                )}
                               </div>
                             </TableCell>
                             <TableCell>
@@ -1700,8 +1724,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                                 cuota.estado === "PAGADA";
                                               const isPendiente =
                                                 cuota.estado === "GENERADA";
-                                              const isVencida =
-                                                cuota.estado === "VENCIDA";
                                               return (
                                                 <div
                                                   key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
@@ -1753,7 +1775,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       ))
                     )}
                   </TableBody>
@@ -1768,20 +1790,28 @@ export function SociosModule({ userRole }: SociosModuleProps) {
             {/* Tab de Asamblea */}
             {(() => {
               const padronOrdenado = [...padronAsamblea].sort((a, b) =>
-                `${a.apellido} ${a.nombre}`.localeCompare(`${b.apellido} ${b.nombre}`, "es", {
-                  sensitivity: "base",
-                }),
+                `${a.apellido} ${a.nombre}`.localeCompare(
+                  `${b.apellido} ${b.nombre}`,
+                  "es",
+                  {
+                    sensitivity: "base",
+                  },
+                ),
               );
 
               const total = padronOrdenado.length;
-              const alDia = padronOrdenado.filter((persona) => persona.cuotasAdeudadas === 0).length;
+              const alDia = padronOrdenado.filter(
+                (persona) => persona.cuotasAdeudadas === 0,
+              ).length;
               const conDeuda = total - alDia;
 
               return (
                 <TabsContent value="asamblea" className="space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-lg font-semibold">Padrón para la Asamblea Anual</h3>
+                      <h3 className="text-lg font-semibold">
+                        Padrón para la Asamblea Anual
+                      </h3>
                       <p className="text-sm text-muted-foreground">
                         {total} socios aptos para asamblea
                       </p>
@@ -1799,18 +1829,30 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                      <p className="text-2xl font-bold text-slate-800">{total}</p>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">
+                        Total
+                      </p>
+                      <p className="text-2xl font-bold text-slate-800">
+                        {total}
+                      </p>
                     </div>
 
                     <div className="rounded-lg border bg-green-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-green-700">Al día</p>
-                      <p className="text-2xl font-bold text-green-700">{alDia}</p>
+                      <p className="text-xs uppercase tracking-wide text-green-700">
+                        Al día
+                      </p>
+                      <p className="text-2xl font-bold text-green-700">
+                        {alDia}
+                      </p>
                     </div>
 
                     <div className="rounded-lg border bg-orange-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-orange-700">Con deuda</p>
-                      <p className="text-2xl font-bold text-orange-700">{conDeuda}</p>
+                      <p className="text-xs uppercase tracking-wide text-orange-700">
+                        Con deuda
+                      </p>
+                      <p className="text-2xl font-bold text-orange-700">
+                        {conDeuda}
+                      </p>
                     </div>
                   </div>
 
@@ -1818,11 +1860,21 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <Table>
                       <TableHeader className="bg-slate-100">
                         <TableRow>
-                          <TableHead className="font-semibold text-slate-700">Apellido y Nombre</TableHead>
-                          <TableHead className="font-semibold text-slate-700">DNI</TableHead>
-                          <TableHead className="font-semibold text-slate-700">Categoría</TableHead>
-                          <TableHead className="font-semibold text-slate-700">Edad</TableHead>
-                          <TableHead className="font-semibold text-slate-700">Morosidad</TableHead>
+                          <TableHead className="font-semibold text-slate-700">
+                            Apellido y Nombre
+                          </TableHead>
+                          <TableHead className="font-semibold text-slate-700">
+                            DNI
+                          </TableHead>
+                          <TableHead className="font-semibold text-slate-700">
+                            Categoría
+                          </TableHead>
+                          <TableHead className="font-semibold text-slate-700">
+                            Edad
+                          </TableHead>
+                          <TableHead className="font-semibold text-slate-700">
+                            Morosidad
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
 
@@ -1832,8 +1884,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             <TableCell colSpan={5} className="py-10">
                               <div className="flex flex-col items-center justify-center text-center text-slate-500">
                                 <div className="text-4xl mb-2">📋</div>
-                                <p className="font-medium">No hay socios que cumplan los requisitos para la asamblea.</p>
-                                <p className="text-sm mt-1">Revisá los filtros o el estado de los socios.</p>
+                                <p className="font-medium">
+                                  No hay socios que cumplan los requisitos para
+                                  la asamblea.
+                                </p>
+                                <p className="text-sm mt-1">
+                                  Revisá los filtros o el estado de los socios.
+                                </p>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1841,7 +1898,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                           padronOrdenado.map((persona, index) => (
                             <TableRow
                               key={persona.id}
-                              className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}
+                              className={
+                                index % 2 === 0 ? "bg-white" : "bg-slate-50"
+                              }
                             >
                               <TableCell className="font-medium">
                                 {persona.apellido}, {persona.nombre}
@@ -1853,9 +1912,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 {persona.cuotasAdeudadas === 0 ? (
                                   <Badge
                                     style={{
-                                      borderColor: '#16a34a',
-                                      backgroundColor: '#dcfce7',
-                                      color: '#15803d',
+                                      borderColor: "#16a34a",
+                                      backgroundColor: "#dcfce7",
+                                      color: "#15803d",
                                     }}
                                   >
                                     Al día
@@ -1863,9 +1922,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 ) : (
                                   <Badge
                                     style={{
-                                      borderColor: '#dc2626',
-                                      backgroundColor: '#fee2e2',
-                                      color: '#b91c1c',
+                                      borderColor: "#dc2626",
+                                      backgroundColor: "#fee2e2",
+                                      color: "#b91c1c",
                                     }}
                                   >
                                     Debe {persona.cuotasAdeudadas} cuotas
@@ -1946,8 +2005,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </TableRow>
                     ) : (
                       filteredHistorial.map((registro, index) => (
-                        <Fragment>
-                          <TableRow key={`registro-${registro.id}`}>
+                        <Fragment key={`registro-${registro.id}`}>
+                          <TableRow>
                             <TableCell className="text-center">
                               {registro.fechaBaja && (
                                 <button
@@ -2072,7 +2131,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                         <Label>Integrantes adicionales</Label>
                         <div className="border rounded-md p-2 h-64 overflow-y-auto space-y-2">
                           {personasDisponiblesParaGrupo
-                            .filter((s) => String(s.id) !== selectedResponsable) // El responsable no se lista aquí
+                            .filter((s) => String(s.id) !== selectedResponsable)
                             .map((socio) => (
                               <div
                                 key={socio.id}

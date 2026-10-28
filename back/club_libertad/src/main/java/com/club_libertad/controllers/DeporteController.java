@@ -1,13 +1,13 @@
 package com.club_libertad.controllers;
-
 import com.club_libertad.dtos.DeporteDTO;
+import com.club_libertad.dtos.EstadoPagosDeporteDTO;
 import com.club_libertad.models.Deporte;
 import com.club_libertad.models.Persona;
+import com.club_libertad.services.CuotaService;
 import com.club_libertad.services.DeporteService;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -15,8 +15,10 @@ import java.util.Set;
 @RestController(value = "/deporteController")
 public class DeporteController {
     private final DeporteService deporteService;
-    public DeporteController(DeporteService deporteService) {
+    private final CuotaService cuotaService;
+    public DeporteController(DeporteService deporteService, CuotaService cuotaService) {
         this.deporteService = deporteService;
+        this.cuotaService = cuotaService;
     }
 
     @GetMapping("/deportes")
@@ -77,4 +79,16 @@ public class DeporteController {
         return ResponseEntity.notFound().build();
     }
 
+    @GetMapping("/deporte/{deporteId}/estado-pagos")
+    @Operation(summary = "Obtiene el listado de pagos y deudas de un deporte para un mes específico (YYYY-MM)")
+    public ResponseEntity<EstadoPagosDeporteDTO> getEstadoPagos(
+            @PathVariable Long deporteId,
+            @RequestParam String periodo) {
+        try {
+            EstadoPagosDeporteDTO response = cuotaService.getEstadoPagosPorDeporteYPeriodo(deporteId, periodo);
+            return ResponseEntity.ok(response);
+        } catch (java.time.format.DateTimeParseException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
 }
