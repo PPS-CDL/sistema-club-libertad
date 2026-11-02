@@ -710,8 +710,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const handleOpenGrupoDialog = (grupo?: GrupoFamiliar) => {
     if (grupo) {
       setEditingGrupo(grupo);
-      setSelectedResponsable(String(grupo.responsable.id));
-      setSelectedIntegrantes(grupo.integrantes.map((i) => String(i.id)));
+      setSelectedResponsable(
+        grupo.responsable ? String(grupo.responsable.id) : "",
+      );
+      setSelectedIntegrantes(
+        grupo.integrantes ? grupo.integrantes.map((i) => String(i.id)) : [],
+      );
     } else {
       setEditingGrupo(null);
       setSelectedResponsable("");
@@ -2208,12 +2212,11 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                 ) : (
                   gruposFamiliares.map((grupo) => {
                     const totalIntegrantes =
-                      grupo.integrantes.length +
-                      (grupo.integrantes.find(
-                        (i) => i.id === grupo.responsable.id,
-                      )
-                        ? 0
-                        : 1);
+                      (grupo.integrantes?.length || 0) +
+                      (grupo.responsable &&
+                      !grupo.integrantes?.some((i) => i.id === grupo.responsable?.id)
+                        ? 1
+                        : 0);
                     return (
                       <Card key={grupo.id} className="overflow-hidden">
                         <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
@@ -2222,8 +2225,10 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               {grupo.nombre}
                             </h3>
                             <p className="text-sm text-gray-600">
-                              Responsable: {grupo.responsable.nombre}{" "}
-                              {grupo.responsable.apellido}
+                              Responsable:{" "}
+                              {grupo.responsable
+                                ? `${grupo.responsable.nombre} ${grupo.responsable.apellido}`
+                                : "Sin responsable"}
                             </p>
                           </div>
                           <div className="flex items-center gap-4">
@@ -2282,25 +2287,33 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                <TableRow className="bg-green-50">
-                                  <TableCell className="font-bold text-green-700">
-                                    Responsable
-                                  </TableCell>
-                                  <TableCell>
-                                    {grupo.responsable.nombre}
-                                  </TableCell>
-                                  <TableCell>
-                                    {grupo.responsable.apellido}
-                                  </TableCell>
-                                  <TableCell>{grupo.responsable.dni}</TableCell>
-                                  <TableCell>
-                                    {getCategoriaLabel(
-                                      grupo.responsable.categoria,
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                                {grupo.integrantes
-                                  .filter((i) => i.id !== grupo.responsable.id)
+                                {grupo.responsable && (
+                                  <TableRow className="bg-green-50">
+                                    <TableCell className="font-bold text-green-700">
+                                      Responsable
+                                    </TableCell>
+                                    <TableCell>
+                                      {grupo.responsable.nombre}
+                                    </TableCell>
+                                    <TableCell>
+                                      {grupo.responsable.apellido}
+                                    </TableCell>
+                                    <TableCell>
+                                      {grupo.responsable.dni}
+                                    </TableCell>
+                                    <TableCell>
+                                      {getCategoriaLabel(
+                                        grupo.responsable.categoria,
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                {(grupo.integrantes || [])
+                                  .filter(
+                                    (i) =>
+                                      !grupo.responsable ||
+                                      i.id !== grupo.responsable.id,
+                                  )
                                   .map((integrante) => (
                                     <TableRow key={integrante.id}>
                                       <TableCell className="text-gray-500">
