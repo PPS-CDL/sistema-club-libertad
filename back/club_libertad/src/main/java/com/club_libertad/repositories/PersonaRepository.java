@@ -14,6 +14,8 @@ import org.springframework.stereotype.Repository;
 public interface PersonaRepository extends JpaRepository<Persona, Long> {
     Optional<Persona> findByDni(String dni);
 
+    List<Persona> findBySocioResponsableAndActivoTrue(Persona socioResponsable);
+
     @Query("""
         SELECT new com.club_libertad.dtos.PersonaAsambleaDTO(
             p.id,

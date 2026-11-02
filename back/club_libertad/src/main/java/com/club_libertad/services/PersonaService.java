@@ -97,19 +97,25 @@ public class PersonaService {
         personaCreate.setFechaRegistro(fechaRegistro);
         // Me aseguro de que 'activo' tenga un valor por defecto
         personaCreate.setActivo(true);
-        if(personaTransfer.getSocioResponsableId() != null){
-            Persona socioResponsable = new Persona();
-            socioResponsable.setId(personaTransfer.getSocioResponsableId());
-            personaCreate.setSocioResponsable(socioResponsable);
-        } else if (personaTransfer.getSocioResponsableDni() != null && !personaTransfer.getSocioResponsableDni().trim().isEmpty()) {
-            Optional<Persona> socioResponsable = personaRepository.findByDni(personaTransfer.getSocioResponsableDni().trim());
-            if (socioResponsable.isPresent()) {
-                personaCreate.setSocioResponsable(socioResponsable.get());
-            } else {
+        // Detección y asignación del Socio Responsable (Regla R04)
+        Persona titular = null;
+        if (personaTransfer.getSocioResponsableDni() != null && !personaTransfer.getSocioResponsableDni().trim().isEmpty()) {
+            Optional<Persona> titularOpt = personaRepository.findByDni(personaTransfer.getSocioResponsableDni().trim());
+            if (titularOpt.isEmpty()) {
                 return Optional.empty();
             }
+            titular = titularOpt.get();
+        } else if (personaTransfer.getSocioResponsableId() != null) {
+            Optional<Persona> titularOpt = personaRepository.findById(personaTransfer.getSocioResponsableId());
+            if (titularOpt.isPresent()) {
+                titular = titularOpt.get();
+            }
         }
-        
+
+        if (titular != null) {
+            personaCreate.setSocioResponsable(titular);
+        }
+
         // Asignar promociones si vienen en el DTO
         if(personaTransfer.getPromocionId() != null) {
             Optional<Promocion> promoOpt = promocionRepository.findById(personaTransfer.getPromocionId());
@@ -128,15 +134,63 @@ public class PersonaService {
             registroRepository.save(registro);
         }
 
-        Persona p = personaRepository.save(personaCreate);
+        // 1. Guardar primero la personaCreate para que tenga ID asignado y esté gestionada
+        Persona personaGuardada = personaRepository.save(personaCreate);
+
+        // 2. Consolidación de Grupo Familiar (Regla R04)
+        if (titular != null) {
+            // Buscamos menores a cargo activos que no sean el que acabamos de guardar
+            List<Persona> otrosMenoresActivos = personaRepository.findBySocioResponsableAndActivoTrue(titular)
+                    .stream()
+                    .filter(m -> !m.getId().equals(personaGuardada.getId()))
+                    .toList();
+
+            if (!otrosMenoresActivos.isEmpty()) {
+                // Caso 2: Titular + otros menores + personaGuardada >= 3 personas
+                GrupoFamiliar grupo = titular.getGrupoFamiliar();
+
+                if (grupo == null) {
+                    // Subcaso 2A: Crear el grupo familiar y forzar escritura inmediata
+                    GrupoFamiliar nuevoGrupo = new GrupoFamiliar();
+                    nuevoGrupo.setNombre("Grupo familiar " + titular.getApellido());
+                    nuevoGrupo.setResponsable(titular);
+                    nuevoGrupo = grupoFamiliarRepository.saveAndFlush(nuevoGrupo);
+
+                    // Vincular titular
+                    titular.setGrupoFamiliar(nuevoGrupo);
+                    personaRepository.save(titular);
+
+                    // Vincular los otros menores
+                    for (Persona menor : otrosMenoresActivos) {
+                        menor.setGrupoFamiliar(nuevoGrupo);
+                        personaRepository.save(menor);
+                    }
+
+                    // Vincular al nuevo menor recién creado
+                    personaGuardada.setGrupoFamiliar(nuevoGrupo);
+                    personaRepository.save(personaGuardada);
+
+                    // Mantener la consistencia bidireccional en memoria
+                    nuevoGrupo.getIntegrantes().clear();
+                    nuevoGrupo.getIntegrantes().add(titular);
+                    nuevoGrupo.getIntegrantes().addAll(otrosMenoresActivos);
+                    nuevoGrupo.getIntegrantes().add(personaGuardada);
+                } else {
+                    // Subcaso 2B: Sumar al nuevo menor al grupo existente
+                    personaGuardada.setGrupoFamiliar(grupo);
+                    personaRepository.save(personaGuardada);
+                    grupo.getIntegrantes().add(personaGuardada);
+                }
+            }
+        }
 
         // Si se asignó promoción al crear, evaluar recálculo de cuota actual impaga
-        if (p.getPromocion() != null) {
-            cuotaService.actualizarCuotasMesActualParaPersona(p);
+        if (personaGuardada.getPromocion() != null) {
+            cuotaService.actualizarCuotasMesActualParaPersona(personaGuardada);
         }
         cuotaSocialService.sincronizarCuotasSocialesMesActual();
         
-        return Optional.of(p.getId());
+        return Optional.of(personaGuardada.getId());
     }
 
     @Transactional

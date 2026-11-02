@@ -7,9 +7,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-
+import lombok.ToString;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -20,9 +20,9 @@ import java.util.stream.Collectors;
 @Entity
 @Table(name = "persona")
 @Data
-@EqualsAndHashCode(exclude = {"deportes", "socioResponsable", "promocion", "grupoFamiliar"})
 @AllArgsConstructor
 @NoArgsConstructor
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Persona {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,11 +57,17 @@ public class Persona {
     private ZonedDateTime fechaRegistro;
     @Column(nullable = false)
     private Boolean activo;
+
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "socio_responsable_id")
     private Persona socioResponsable;
+
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     @ManyToMany
     @JoinTable(
         name = "persona_deporte",
@@ -69,15 +75,30 @@ public class Persona {
         inverseJoinColumns = @JoinColumn(name = "deporte_id")
     )
     private Set<Deporte> deportes;
+
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promocion_id")
     private Promocion promocion;
 
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "grupo_familiar_id")
     private GrupoFamiliar grupoFamiliar;
+
+    @JsonIgnore
+    public GrupoFamiliar getGrupoFamiliar() {
+        return grupoFamiliar;
+    }
+
+    @JsonIgnore
+    public Persona getSocioResponsable() {
+        return socioResponsable;
+    }
 
     @JsonProperty("grupoFamiliarId")
     public Long getGrupoFamiliarId() {

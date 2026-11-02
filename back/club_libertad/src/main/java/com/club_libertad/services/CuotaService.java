@@ -61,6 +61,28 @@ public class CuotaService {
         return montoFinal.compareTo(BigDecimal.ZERO) > 0 ? montoFinal : BigDecimal.ZERO;
     }
 
+    /**
+     * Calcula la cuota social según la Regla R04:
+     * 1. Menor con socioResponsable -> $0
+     * 2. Titular de Grupo Familiar -> Importe familiar de ConfiguracionClub
+     * 3. Socio individual o con 1 hijo sin grupo consolidado -> Cuota social del deporte
+     */
+    private BigDecimal calcularCuotaSocial(Persona persona, Deporte deporte, com.club_libertad.models.ConfiguracionClub config) {
+        if (persona.getSocioResponsable() != null) {
+            return BigDecimal.ZERO;
+        }
+        if (persona.getGrupoFamiliar() != null 
+                && persona.getGrupoFamiliar().getResponsable() != null 
+                && persona.getGrupoFamiliar().getResponsable().getId().equals(persona.getId())) {
+            return config.getImporteCuotaFamiliar() != null 
+                    ? config.getImporteCuotaFamiliar() 
+                    : BigDecimal.ZERO;
+        }
+        return deporte != null && deporte.getCuotaSocial() != null 
+                ? deporte.getCuotaSocial() 
+                : BigDecimal.ZERO;
+    }
+
     @Transactional(readOnly = true)
     public List<Cuota> getAllCuotas(){ return cuotaRepository.findAll(); }
 
@@ -84,11 +106,8 @@ public class CuotaService {
         BigDecimal cuotaEntrenador = deporteExisting.getCuotaEntrenador() != null ? deporteExisting.getCuotaEntrenador() : BigDecimal.ZERO;
         BigDecimal cuotaSeguro = deporteExisting.getCuotaSeguro() != null ? deporteExisting.getCuotaSeguro() : BigDecimal.ZERO;
         com.club_libertad.models.ConfiguracionClub config = configuracionClubService.getConfiguracion();
-        boolean conservaComponenteSocial = config.getFechaEfectiva() == null
-            || cuotaTransfer.getPeriodo().isBefore(config.getFechaEfectiva());
-        BigDecimal cuotaSocial = conservaComponenteSocial && deporteExisting.getCuotaSocial() != null
-            ? deporteExisting.getCuotaSocial()
-            : BigDecimal.ZERO;
+        
+        BigDecimal cuotaSocial = calcularCuotaSocial(personaExisting, deporteExisting, config);
         BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
 
         Promocion promocion = personaExisting.getPromocion();
@@ -149,11 +168,7 @@ public class CuotaService {
                 BigDecimal cuotaEntrenador = inscripcion.getDeporteId().getCuotaEntrenador() != null ? inscripcion.getDeporteId().getCuotaEntrenador() : BigDecimal.ZERO;
                 BigDecimal cuotaSeguro = inscripcion.getDeporteId().getCuotaSeguro() != null ? inscripcion.getDeporteId().getCuotaSeguro() : BigDecimal.ZERO;
                 
-                BigDecimal cuotaSocial = esPostTransicion
-                        ? BigDecimal.ZERO
-                        : inscripcion.getDeporteId().getCuotaSocial() != null
-                                ? inscripcion.getDeporteId().getCuotaSocial()
-                                : BigDecimal.ZERO;
+                BigDecimal cuotaSocial = calcularCuotaSocial(inscripcion.getPersonaId(), inscripcion.getDeporteId(), config);
                 
                 BigDecimal montoBase = cuotaEntrenador.add(cuotaSeguro).add(cuotaSocial);
                 Promocion promocion = inscripcion.getPersonaId().getPromocion();
