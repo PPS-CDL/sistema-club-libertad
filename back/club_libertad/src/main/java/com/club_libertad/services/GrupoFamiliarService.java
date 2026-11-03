@@ -6,6 +6,8 @@ import com.club_libertad.repositories.GrupoFamiliarRepository;
 import com.club_libertad.repositories.PersonaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -136,28 +138,26 @@ public class GrupoFamiliarService {
         return grupoActualizado;
     }
 // Funcion para eliminar un grupo familiar. 
-    @Transactional
+        @Transactional
     public void deleteGrupo(Long id) {
         GrupoFamiliar grupo = grupoFamiliarRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Grupo no encontrado."));
 
-        boolean tieneCuotasHistoricas = cuotaSocialRepository.existsByGrupoFamiliar_Id(id);
-        cuotaSocialService.prepararCambioIntegrantesGrupo(id, true);
-        
+        // Si querés respetar la regla de negocio, no permitís dejarlo sin responsable
+        if (cuotaSocialRepository.existsByGrupoFamiliar_Id(id)) {
+            throw new RuntimeException("No se puede borrar un grupo familiar con cuotas históricas.");
+        }
+
         if (grupo.getResponsable() != null) {
             grupo.getResponsable().setGrupoFamiliar(null);
             personaRepository.save(grupo.getResponsable());
         }
-        for (Persona p : grupo.getIntegrantes()) {
+
+        for (Persona p : new ArrayList<>(grupo.getIntegrantes())) {
             p.setGrupoFamiliar(null);
             personaRepository.save(p);
         }
-        if (tieneCuotasHistoricas) {
-            grupo.setResponsable(null);
-            cuotaSocialService.sincronizarCuotasSocialesMesActual();
-            return;
-        }
-        grupoFamiliarRepository.delete(grupo);
+
         grupoFamiliarRepository.delete(grupo);
         cuotaSocialService.sincronizarCuotasSocialesMesActual();
     }
