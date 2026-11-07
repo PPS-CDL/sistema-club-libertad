@@ -324,7 +324,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         ? deportesRes.data
         : [];
       const pagosData = Array.isArray(pagosRes.data) ? pagosRes.data : [];
-      // Mapear cuotas sociales para que cumplan estrictamente con la interfaz Cuota
+
       const cuotasSocialesTransformadas: Cuota[] = cuotasSocialesData.map(
         (cs) => {
           const personaIdVal =
@@ -359,7 +359,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         },
       );
 
-      // Unificar ambas listas con el tipo Cuota[]
       const todasLasCuotasUnificadas: Cuota[] = [
         ...cuotasDeportivasData,
         ...cuotasSocialesTransformadas,
@@ -488,6 +487,40 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     "EFECTIVO" | "TRANSFERENCIA" | "DEBITO_AUTOMATICO"
   >("EFECTIVO");
   const [observaciones, setObservaciones] = useState("");
+  const [socioPopoverAbierto, setSocioPopoverAbierto] = useState(false);
+  const [busquedaSocio, setBusquedaSocio] = useState("");
+
+  const cambiarAperturaSocio = (abierto: boolean) => {
+    setSocioPopoverAbierto(abierto);
+    if (!abierto) setBusquedaSocio("");
+  };
+
+  const sociosOrdenados = useMemo(() => {
+    return [...personas].sort((a, b) => {
+      const compApellido = (a.apellido || "").localeCompare(
+        b.apellido || "",
+        "es",
+        {
+          sensitivity: "base",
+        },
+      );
+      if (compApellido !== 0) return compApellido;
+      return (a.nombre || "").localeCompare(b.nombre || "", "es", {
+        sensitivity: "base",
+      });
+    });
+  }, [personas]);
+
+  const busquedaSocioNormalizada = normalizarBusquedaDeporte(busquedaSocio);
+  const sociosFiltrados = useMemo(() => {
+    if (!busquedaSocioNormalizada) return sociosOrdenados;
+    return sociosOrdenados.filter((socio) => {
+      const textoCompleto = `${socio.apellido} ${socio.nombre} ${socio.dni || ""}`;
+      return normalizarBusquedaDeporte(textoCompleto).includes(
+        busquedaSocioNormalizada,
+      );
+    });
+  }, [sociosOrdenados, busquedaSocioNormalizada]);
 
   // Obtiene datos del socio seleccionado actualmente
   const socioSeleccionadoObj = useMemo(() => {
@@ -561,6 +594,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     setSelectedCuotas([]);
     setMetodoPago("EFECTIVO");
     setObservaciones("");
+    setSocioPopoverAbierto(false);
+    setBusquedaSocio("");
   };
 
   const generarArchivoRedLink = () => {
@@ -849,7 +884,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
         (cuota) => cuota.estado === "PAGADA",
       );
       const adeudadasSociales = cuotasSocialesDelMes.filter(
-        (cuota) => cuota.estado === "PENDIENTE" || cuota.estado === "VENCIDA",
+        (cuota) =>
+          cuota.esSocial &&
+          (cuota.estado === "PENDIENTE" || cuota.estado === "VENCIDA"),
       );
       const totalSocialCobrado = pagadasSociales.reduce(
         (total, cuota) => total + (Number(cuota.monto) || 0),
@@ -1199,17 +1236,12 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     ejecutarFiltroLocal,
   ]);
 
-  const generarReporte = (tipo: "ingresos" | "deudas") => {
-    if (tipo === "ingresos") {
-      setActiveTab("ingresos-fecha");
-      consultarIngresosPorFecha();
-    } else {
-      const deudas = pagos.filter(
-        (p) => p.estado === "pendiente" || p.estado === "vencido",
-      );
-      const total = deudas.reduce((sum, p) => sum + p.monto, 0);
-      toast.success(`Reporte de deudas: $${total.toLocaleString()}`);
-    }
+  const generarReporteDeudas = () => {
+    const deudas = pagos.filter(
+      (p) => p.estado === "pendiente" || p.estado === "vencido",
+    );
+    const total = deudas.reduce((sum, p) => sum + p.monto, 0);
+    toast.success(`Reporte de deudas: $${total.toLocaleString()}`);
   };
 
   const hoy = new Date().toISOString().split("T")[0];
@@ -1341,21 +1373,17 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 <Download className="w-4 h-4 mr-2" />
                 Archivo Red Link
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => generarReporte("ingresos")}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Reporte Ingresos
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => generarReporte("deudas")}
-              >
+              <Button variant="outline" onClick={generarReporteDeudas}>
                 <FileText className="w-4 h-4 mr-2" />
                 Reporte Deudas
               </Button>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <Dialog
+                open={isDialogOpen}
+                onOpenChange={(open) => {
+                  setIsDialogOpen(open);
+                  if (!open) resetForm();
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="w-4 h-4 mr-2" />
@@ -1370,7 +1398,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       pagadas
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4 py-4">
+                  <div className="space-y-4 py-4 min-w-0">
                     {/* Banner de valores vigentes de configuración */}
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-800 space-y-1">
                       <div className="font-semibold flex items-center gap-1.5 text-blue-900">
@@ -1402,32 +1430,95 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
+                      <div className="space-y-2 min-w-0">
                         <Label>Socio *</Label>
-                        <Select
-                          value={selectedSocio}
-                          onValueChange={(v) => {
-                            setSelectedSocio(v);
-                            setSelectedCuotas([]);
-                          }}
+                        <Popover
+                          open={socioPopoverAbierto}
+                          onOpenChange={cambiarAperturaSocio}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona un socio" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {personas.map((socio) => (
-                              <SelectItem
-                                key={socio.id}
-                                value={String(socio.id)}
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={socioPopoverAbierto}
+                              className="h-10 w-full font-normal"
+                              style={{
+                                position: "relative",
+                                display: "block",
+                                overflow: "hidden",
+                                textAlign: "left",
+                                paddingLeft: 12,
+                                paddingRight: 36,
+                              }}
+                            >
+                              <span
+                                title={
+                                  socioSeleccionadoObj
+                                    ? `${socioSeleccionadoObj.apellido}, ${socioSeleccionadoObj.nombre} (DNI: ${socioSeleccionadoObj.dni})`
+                                    : undefined
+                                }
+                                style={{
+                                  display: "block",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
-                                {socio.nombre} {socio.apellido} (DNI:{" "}
-                                {socio.dni})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                                {socioSeleccionadoObj
+                                  ? `${socioSeleccionadoObj.apellido}, ${socioSeleccionadoObj.nombre} (DNI: ${socioSeleccionadoObj.dni})`
+                                  : "Selecciona un socio"}
+                              </span>
+                              <ChevronsUpDown
+                                className="h-4 w-4 opacity-50"
+                                style={{
+                                  position: "absolute",
+                                  right: 12,
+                                  top: "50%",
+                                  transform: "translateY(-50%)",
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-[var(--radix-popover-trigger-width)] p-0"
+                            align="start"
+                          >
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar socio..."
+                                value={busquedaSocio}
+                                onValueChange={setBusquedaSocio}
+                              />
+                              <CommandList>
+                                <CommandEmpty>
+                                  No se encontraron socios.
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {sociosFiltrados.map((socio) => (
+                                    <CommandItem
+                                      key={socio.id}
+                                      value={String(socio.id)}
+                                      onSelect={() => {
+                                        setSelectedSocio(String(socio.id));
+                                        setSelectedCuotas([]);
+                                        cambiarAperturaSocio(false);
+                                      }}
+                                    >
+                                      <span className="truncate">
+                                        {socio.apellido}, {socio.nombre} (DNI:{" "}
+                                        {socio.dni})
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 min-w-0">
                         <Label>Método de Pago *</Label>
                         <Select
                           value={metodoPago}
@@ -1561,7 +1652,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 min-w-0">
                     <Button
                       variant="outline"
                       onClick={() => {
