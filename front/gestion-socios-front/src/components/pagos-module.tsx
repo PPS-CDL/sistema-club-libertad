@@ -73,6 +73,15 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 import cuotaSocialService from "../services/cuotaSocialService";
 
 const normalizarBusquedaDeporte = (texto: string) =>
@@ -114,6 +123,8 @@ const prorratearCuota = (c: any) => {
 interface Pago {
   id: string;
   socio: string;
+  socioApellido?: string;
+  socioNombre?: string;
   socioDNI: string;
   monto: number;
   fecha: string;
@@ -154,6 +165,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [filterSocioPago, setFilterSocioPago] = useState<string>("all");
   const [expandedPagos, setExpandedPagos] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("todos");
+  const [paginaActualPendientes, setPaginaActualPendientes] =
+    useState<number>(1);
+  const ITEMS_POR_PAGINA_PENDIENTES = 100;
+
+  const generarNumerosPagina = (actual: number, total: number) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (actual <= 4) {
+      return [1, 2, 3, 4, 5, "ellipsis", total];
+    }
+    if (actual >= total - 3) {
+      return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "ellipsis", actual - 1, actual, actual + 1, "ellipsis", total];
+  };
 
   // Estado para la Configuración Global del Club
   const [configGlobal, setConfigGlobal] = useState<ConfiguracionClubData>({
@@ -444,6 +471,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
             socio: p
               ? `${p.nombre} ${p.apellido}`
               : `Persona ${cuota.personaId}`,
+            socioApellido: p?.apellido || "",
+            socioNombre: p?.nombre || "",
             socioDNI: p?.dni || "",
             monto: cuota.monto,
             fecha: fechaPagoReal,
@@ -478,6 +507,47 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   useEffect(() => {
     cargarCuotas();
   }, [cargarCuotas]);
+
+  // Lista exclusiva de Pendientes: ordenada alfabéticamente de la A a la Z por Apellido
+  const cuotasPendientesOrdenadas = useMemo(() => {
+    const search = searchCuota.toLowerCase().trim();
+
+    const filtrados = pagos
+      .filter((p) => p.estado === "pendiente")
+      .filter((p) => {
+        if (!search) return true;
+        const nombreCompleto = p.socio.toLowerCase();
+        const apellidoNombre =
+          p.socioApellido && p.socioNombre
+            ? `${p.socioApellido} ${p.socioNombre}`.toLowerCase()
+            : "";
+        return (
+          nombreCompleto.includes(search) ||
+          apellidoNombre.includes(search) ||
+          p.socioDNI.toLowerCase().includes(search) ||
+          p.estado.toLowerCase().includes(search) ||
+          p.conceptos.some((c) => c.concepto.toLowerCase().includes(search))
+        );
+      });
+
+    return filtrados.sort((a, b) => {
+      const compApellido = (a.socioApellido || "").localeCompare(
+        b.socioApellido || "",
+        "es",
+        { sensitivity: "base" },
+      );
+      if (compApellido !== 0) return compApellido;
+
+      const compNombre = (a.socioNombre || "").localeCompare(
+        b.socioNombre || "",
+        "es",
+        { sensitivity: "base" },
+      );
+      if (compNombre !== 0) return compNombre;
+
+      return a.id.localeCompare(b.id, "es", { numeric: true });
+    });
+  }, [pagos, searchCuota]);
 
   // Estados y funciones para el registro de pagos
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1672,7 +1742,13 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(val) => {
+              setActiveTab(val);
+              if (val === "pendientes") setPaginaActualPendientes(1);
+            }}
+          >
             <TabsList className="flex flex-wrap">
               <TabsTrigger value="todos">Cuotas</TabsTrigger>
               <TabsTrigger value="pagados">Pagadas</TabsTrigger>
@@ -1698,7 +1774,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               </TabsTrigger>
             </TabsList>
 
-            {["todos", "pagados", "pendientes", "vencidos"].map((tab) => (
+            {["todos", "pagados", "vencidos"].map((tab) => (
               <TabsContent key={tab} value={tab}>
                 <div className="mb-4">
                   <Input
@@ -1728,8 +1804,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         .filter((p) => {
                           if (tab === "todos") return true;
                           if (tab === "pagados") return p.estado === "pagado";
-                          if (tab === "pendientes")
-                            return p.estado === "pendiente";
                           if (tab === "vencidos") return p.estado === "vencido";
                           return true;
                         })
@@ -1794,6 +1868,192 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </div>
               </TabsContent>
             ))}
+
+            {/* Pestaña exclusiva de Pendientes con orden A-Z por apellido y paginación de 100 filas */}
+            <TabsContent value="pendientes">
+              {(() => {
+                const totalItems = cuotasPendientesOrdenadas.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_PENDIENTES),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualPendientes),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_PENDIENTES;
+                const cuotasPaginadas = cuotasPendientesOrdenadas.slice(
+                  indiceInicio,
+                  indiceInicio + ITEMS_POR_PAGINA_PENDIENTES,
+                );
+
+                return (
+                  <>
+                    <div className="mb-4">
+                      <Input
+                        type="text"
+                        placeholder="Buscar por socio, DNI, deporte o estado..."
+                        value={searchCuota}
+                        onChange={(e) => {
+                          setSearchCuota(e.target.value);
+                          setPaginaActualPendientes(1);
+                        }}
+                        className="max-w-md"
+                      />
+                    </div>
+                    <div className="border rounded-lg overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Socio</TableHead>
+                            <TableHead>DNI</TableHead>
+                            <TableHead>Mes</TableHead>
+                            <TableHead>Conceptos</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Fecha del Pago</TableHead>
+                            <TableHead>Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cuotasPaginadas.length > 0 ? (
+                            cuotasPaginadas.map((pago) => (
+                              <TableRow key={pago.id}>
+                                <TableCell className="font-medium">
+                                  {pago.socioApellido
+                                    ? `${pago.socioApellido}, ${pago.socioNombre}`
+                                    : pago.socio}
+                                </TableCell>
+                                <TableCell>{pago.socioDNI}</TableCell>
+                                <TableCell>{pago.mes}</TableCell>
+                                <TableCell>
+                                  <div className="text-sm space-y-1">
+                                    {pago.conceptos.map((c, idx) => (
+                                      <div key={idx}>
+                                        <span className="text-gray-600">
+                                          {c.concepto}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <span>${pago.monto.toLocaleString()}</span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-gray-400">—</span>
+                                </TableCell>
+                                <TableCell>
+                                  {pago.fecha
+                                    ? formatearFechaDisplay(pago.fecha)
+                                    : "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={getEstadoBadge(pago.estado) as any}
+                                  >
+                                    {pago.estado}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={8}
+                                className="text-center py-6 text-gray-500"
+                              >
+                                No se encontraron cuotas pendientes para el
+                                criterio seleccionado.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                      <p className="text-sm text-gray-600">
+                        Mostrando{" "}
+                        <span className="font-medium">
+                          {totalItems === 0 ? 0 : indiceInicio + 1}
+                        </span>{" "}
+                        a{" "}
+                        <span className="font-medium">
+                          {Math.min(
+                            indiceInicio + ITEMS_POR_PAGINA_PENDIENTES,
+                            totalItems,
+                          )}
+                        </span>{" "}
+                        de <span className="font-medium">{totalItems}</span>{" "}
+                        cuotas pendientes
+                      </p>
+                      {totalPaginas > 1 && (
+                        <Pagination className="mx-0 w-auto justify-end">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura > 1) {
+                                    setPaginaActualPendientes(paginaSegura - 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura <= 1
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                            {generarNumerosPagina(
+                              paginaSegura,
+                              totalPaginas,
+                            ).map((numPag, idx) => (
+                              <PaginationItem key={`pendientes-pag-${idx}`}>
+                                {numPag === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={numPag === paginaSegura}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPaginaActualPendientes(Number(numPag));
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    {numPag}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura < totalPaginas) {
+                                    setPaginaActualPendientes(paginaSegura + 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura >= totalPaginas
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </TabsContent>
 
             {/* Lista alterna de Pagos */}
             <TabsContent value="pagos">
