@@ -114,10 +114,16 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
 };
 
 type HistorialSortField = "nombreCompleto" | "fechaRegistro" | "fechaBaja";
+type AsambleaSortField = "apellido" | "categoria" | "morosidad";
 type SortDirection = "asc" | "desc";
 
 interface HistorialSortConfig {
   field: HistorialSortField;
+  direction: SortDirection;
+}
+
+interface AsambleaSortConfig {
+  field: AsambleaSortField;
   direction: SortDirection;
 }
 
@@ -139,6 +145,11 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [padronAsamblea, setPadronAsamblea] = useState<PersonaAsambleaDTO[]>(
     [],
   );
+  const [asambleaSortConfig, setAsambleaSortConfig] =
+    useState<AsambleaSortConfig>({
+      field: "apellido",
+      direction: "asc",
+    });
   const [expandedSocioId, setExpandedSocioId] = useState<string | null>(null);
   const [cuotasPorSocio, setCuotasPorSocio] = useState<Record<string, Cuota[]>>(
     {},
@@ -291,8 +302,69 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     }
   };
 
+  const padronAsambleaOrdenado = useMemo(() => {
+    return [...padronAsamblea].sort((a, b) => {
+      // 1 & 2. Apellido y Nombre (A-Z / Z-A)
+      if (asambleaSortConfig.field === "apellido") {
+        const nameA = `${a.apellido} ${a.nombre}`;
+        const nameB = `${b.apellido} ${b.nombre}`;
+        const cmp = nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+        return asambleaSortConfig.direction === "asc" ? cmp : -cmp;
+      }
+
+      // 3. Categoría (asc / desc)
+      if (asambleaSortConfig.field === "categoria") {
+        const catA = a.categoria || "";
+        const catB = b.categoria || "";
+        const cmp = catA.localeCompare(catB, "es", { sensitivity: "base" });
+        if (cmp !== 0) {
+          return asambleaSortConfig.direction === "asc" ? cmp : -cmp;
+        }
+        // Desempate por apellido A-Z
+        return `${a.apellido} ${a.nombre}`.localeCompare(
+          `${b.apellido} ${b.nombre}`,
+          "es",
+          { sensitivity: "base" },
+        );
+      }
+
+      // 4. Morosidad (Lógica estricta de sub-grupos)
+      if (asambleaSortConfig.field === "morosidad") {
+        const cuotasA = a.cuotasAdeudadas ?? 0;
+        const cuotasB = b.cuotasAdeudadas ?? 0;
+        const alDiaA = cuotasA === 0;
+        const alDiaB = cuotasB === 0;
+
+        if (asambleaSortConfig.direction === "asc") {
+          // Clic 1: Primero "Al día" (0 cuotas), luego deudores de mayor a menor (3 -> 2 -> 1)
+          if (alDiaA && !alDiaB) return -1;
+          if (!alDiaA && alDiaB) return 1;
+          if (!alDiaA && !alDiaB) {
+            if (cuotasB !== cuotasA) return cuotasB - cuotasA;
+          }
+        } else {
+          // Clic 2: Primero deudores de mayor a menor (3 -> 2 -> 1), luego "Al día"
+          if (!alDiaA && alDiaB) return -1;
+          if (alDiaA && !alDiaB) return 1;
+          if (!alDiaA && !alDiaB) {
+            if (cuotasB !== cuotasA) return cuotasB - cuotasA;
+          }
+        }
+
+        // Desempate por apellido A-Z si tienen las mismas cuotas
+        return `${a.apellido} ${a.nombre}`.localeCompare(
+          `${b.apellido} ${b.nombre}`,
+          "es",
+          { sensitivity: "base" },
+        );
+      }
+
+      return 0;
+    });
+  }, [padronAsamblea, asambleaSortConfig]);
+
   const exportarAsambleaCSV = () => {
-    if (!padronAsamblea.length) return;
+    if (!padronAsambleaOrdenado.length) return;
 
     const headers = [
       "Apellido y Nombre",
@@ -301,7 +373,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       "Edad",
       "Morosidad",
     ];
-    const rows = padronAsamblea.map((persona) => {
+    const rows = padronAsambleaOrdenado.map((persona) => {
       const morosidad =
         persona.cuotasAdeudadas === 0
           ? "Al día"
@@ -1893,18 +1965,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
             {/* Tab de Asamblea */}
             {(() => {
-              const padronOrdenado = [...padronAsamblea].sort((a, b) =>
-                `${a.apellido} ${a.nombre}`.localeCompare(
-                  `${b.apellido} ${b.nombre}`,
-                  "es",
-                  {
-                    sensitivity: "base",
-                  },
-                ),
-              );
-
-              const total = padronOrdenado.length;
-              const alDia = padronOrdenado.filter(
+              const total = padronAsambleaOrdenado.length;
+              const alDia = padronAsambleaOrdenado.filter(
                 (persona) => persona.cuotasAdeudadas === 0,
               ).length;
               const conDeuda = total - alDia;
@@ -1933,7 +1995,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 font-medium">
                         Total
                       </p>
                       <p className="text-2xl font-bold text-slate-800">
@@ -1941,20 +2003,20 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </p>
                     </div>
 
-                    <div className="rounded-lg border bg-green-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-green-700">
+                    <div className="rounded-lg border bg-green-50/50 border-green-200 p-3">
+                      <p className="text-xs uppercase tracking-wide text-green-700 font-medium">
                         Al día
                       </p>
-                      <p className="text-2xl font-bold text-green-700">
+                      <p className="text-2xl font-bold text-green-600">
                         {alDia}
                       </p>
                     </div>
 
-                    <div className="rounded-lg border bg-orange-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-orange-700">
+                    <div className="rounded-lg border bg-red-50/50 border-red-200 p-3">
+                      <p className="text-xs uppercase tracking-wide text-red-700 font-medium">
                         Con deuda
                       </p>
-                      <p className="text-2xl font-bold text-orange-700">
+                      <p className="text-2xl font-bold text-red-600">
                         {conDeuda}
                       </p>
                     </div>
@@ -1965,25 +2027,97 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       <TableHeader className="bg-slate-100">
                         <TableRow>
                           <TableHead className="font-semibold text-slate-700">
-                            Apellido y Nombre
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "apellido",
+                                  direction:
+                                    prev.field === "apellido" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Apellido y Nombre
+                              {asambleaSortConfig.field === "apellido" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
                             DNI
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
-                            Categoría
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "categoria",
+                                  direction:
+                                    prev.field === "categoria" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Categoría
+                              {asambleaSortConfig.field === "categoria" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
                             Edad
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
-                            Morosidad
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "morosidad",
+                                  direction:
+                                    prev.field === "morosidad" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Morosidad
+                              {asambleaSortConfig.field === "morosidad" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
 
                       <TableBody>
-                        {padronOrdenado.length === 0 ? (
+                        {padronAsambleaOrdenado.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={5} className="py-10">
                               <div className="flex flex-col items-center justify-center text-center text-slate-500">
@@ -1999,7 +2133,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          padronOrdenado.map((persona, index) => (
+                          padronAsambleaOrdenado.map((persona, index) => (
                             <TableRow
                               key={persona.id}
                               className={
