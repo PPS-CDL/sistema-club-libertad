@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,11 +6,29 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
-import { Plus, Edit, Trash2, Tag, Percent } from 'lucide-react';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Tag,
+  Percent,
+  Ban,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+} from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Textarea } from './ui/textarea';
 import promocionService from '../services/promocionService';
 import type { Promocion } from '../types/promocion';
+
+type PromocionSortField = 'nombre' | 'descuento' | 'activo';
+type SortDirection = 'asc' | 'desc';
+
+interface PromocionSortConfig {
+  field: PromocionSortField;
+  direction: SortDirection;
+}
 
 interface PromocionesModuleProps {
   userRole: 'admin' | 'secretario';
@@ -21,6 +39,10 @@ export function PromocionesModule({ userRole }: PromocionesModuleProps) {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPromocion, setEditingPromocion] = useState<Promocion | null>(null);
+  const [sortConfig, setSortConfig] = useState<PromocionSortConfig>({
+    field: 'nombre',
+    direction: 'asc',
+  });
   const [formData, setFormData] = useState<Partial<Promocion>>({
     tipoDescuento: 'PORCENTAJE',
     activo: true,
@@ -150,6 +172,61 @@ export function PromocionesModule({ userRole }: PromocionesModuleProps) {
     }
   };
 
+  const getNumericDescuento = (p: Promocion): number => {
+    if (typeof p.descuento === 'number') return p.descuento;
+    const num = parseFloat(String(p.descuento).replace(/[^0-9.-]+/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const sortedPromociones = useMemo(() => {
+    return [...promociones].sort((a, b) => {
+      // 1. Ordenamiento por Nombre (A-Z / Z-A)
+      if (sortConfig.field === 'nombre') {
+        const cmp = a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
+      }
+
+      // 2. Ordenamiento por Descuento con sub-grupos (% y $)
+      if (sortConfig.field === 'descuento') {
+        const isPercentA =
+          a.tipoDescuento === 'PORCENTAJE' || String(a.descuento).includes('%');
+        const isPercentB =
+          b.tipoDescuento === 'PORCENTAJE' || String(b.descuento).includes('%');
+
+        // Sub-grupo: los porcentajes (%) SIEMPRE preceden a los montos fijos ($)
+        if (isPercentA && !isPercentB) return -1;
+        if (!isPercentA && isPercentB) return 1;
+
+        // Mismo tipo de descuento: comparar numéricamente
+        const valA = getNumericDescuento(a);
+        const valB = getNumericDescuento(b);
+
+        if (valA !== valB) {
+          return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+        }
+
+        // Desempate por nombre A-Z
+        return a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+      }
+
+      // 3. Ordenamiento por Estado (Activa / Inactiva)
+      if (sortConfig.field === 'activo') {
+        if (a.activo !== b.activo) {
+          // Clic 1 (asc): Activas primero. Clic 2 (desc): Inactivas primero.
+          if (sortConfig.direction === 'asc') {
+            return a.activo ? -1 : 1;
+          } else {
+            return a.activo ? 1 : -1;
+          }
+        }
+        // Desempate por nombre A-Z
+        return a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+      }
+
+      return 0;
+    });
+  }, [promociones, sortConfig]);
+
   const promocionesActivas = promociones.filter(p => p.activo).length;
   const promocionesInactivas = promociones.filter(p => !p.activo).length;
 
@@ -175,8 +252,11 @@ export function PromocionesModule({ userRole }: PromocionesModuleProps) {
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardDescription>Promociones Inactivas</CardDescription>
-            <CardTitle className="text-gray-500">{promocionesInactivas}</CardTitle>
+            <CardDescription className="flex items-center gap-2">
+              <Ban className="w-4 h-4 text-red-600" />
+              Promociones Inactivas
+            </CardDescription>
+            <CardTitle className="text-red-600">{promocionesInactivas}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -320,22 +400,97 @@ export function PromocionesModule({ userRole }: PromocionesModuleProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortConfig((prev) => ({
+                          field: 'nombre',
+                          direction:
+                            prev.field === 'nombre' && prev.direction === 'asc'
+                              ? 'desc'
+                              : 'asc',
+                        }));
+                      }}
+                      className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                    >
+                      Nombre
+                      {sortConfig.field === 'nombre' ? (
+                        sortConfig.direction === 'asc' ? (
+                          <ArrowUp className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <ArrowDown className="w-4 h-4 text-blue-600" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>Descripción</TableHead>
-                  <TableHead>Descuento</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortConfig((prev) => ({
+                          field: 'descuento',
+                          direction:
+                            prev.field === 'descuento' && prev.direction === 'asc'
+                              ? 'desc'
+                              : 'asc',
+                        }));
+                      }}
+                      className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                    >
+                      Descuento
+                      {sortConfig.field === 'descuento' ? (
+                        sortConfig.direction === 'asc' ? (
+                          <ArrowUp className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <ArrowDown className="w-4 h-4 text-blue-600" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortConfig((prev) => ({
+                          field: 'activo',
+                          direction:
+                            prev.field === 'activo' && prev.direction === 'asc'
+                              ? 'desc'
+                              : 'asc',
+                        }));
+                      }}
+                      className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                    >
+                      Estado
+                      {sortConfig.field === 'activo' ? (
+                        sortConfig.direction === 'asc' ? (
+                          <ArrowUp className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <ArrowDown className="w-4 h-4 text-blue-600" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
-                <TableBody>
-                {promociones.length === 0 ? (
+              <TableBody>
+                {sortedPromociones.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-gray-500 py-8">
                       No hay promociones creadas
                     </TableCell>
                   </TableRow>
                 ) : (
-                  promociones.map((promocion) => (
+                  sortedPromociones.map((promocion) => (
                     <TableRow key={promocion.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
