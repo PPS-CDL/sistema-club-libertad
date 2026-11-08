@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -39,6 +39,8 @@ import {
   Search,
   UserPlus,
   History,
+  ArrowUp,
+  ArrowDown,
   ArrowUpDown,
   SquareArrowDown,
   SquareArrowRight,
@@ -46,6 +48,15 @@ import {
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Checkbox } from "./ui/checkbox";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 
 import personaService from "../services/personaService";
 import deporteService from "../services/deporteService";
@@ -102,6 +113,27 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
   return edad;
 };
 
+type HistorialSortField = "nombreCompleto" | "fechaRegistro" | "fechaBaja";
+type SortDirection = "asc" | "desc";
+
+interface HistorialSortConfig {
+  field: HistorialSortField;
+  direction: SortDirection;
+}
+
+const generarNumerosPagina = (actual: number, total: number) => {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (actual <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis", total];
+  }
+  if (actual >= total - 3) {
+    return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, "ellipsis", actual - 1, actual, actual + 1, "ellipsis", total];
+};
+
 export function SociosModule({ userRole }: SociosModuleProps) {
   const [socios, setSocios] = useState<Socio[]>([]);
   const [padronAsamblea, setPadronAsamblea] = useState<PersonaAsambleaDTO[]>(
@@ -145,6 +177,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [socioToAltaBaja, setSocioToAltaBaja] = useState<Socio | null>(null);
   const [isAltaBajaDialogOpen, setIsAltaBajaDialogOpen] = useState(false);
   const [historialSearchTerm, setHistorialSearchTerm] = useState("");
+  const [historialSortConfig, setHistorialSortConfig] =
+    useState<HistorialSortConfig>({
+      field: "fechaRegistro",
+      direction: "desc",
+    });
+  const [historialCurrentPage, setHistorialCurrentPage] = useState<number>(1);
+  const [historialItemsPerPage, setHistorialItemsPerPage] = useState<number>(20);
   const [historialFilter, setHistorialFilter] = useState<
     "todos" | "activos" | "inactivos"
   >("todos");
@@ -424,24 +463,85 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     })
     .sort((a, b) => Number(b.id) - Number(a.id));
 
-  const filteredHistorial = historialRegistros
-    .filter((registro) => {
-      const nombreCompleto =
-        `${registro.apellido} ${registro.nombre}`.toLowerCase();
-      return (
-        nombreCompleto.includes(historialSearchTerm.toLowerCase()) ||
-        registro.dni.includes(historialSearchTerm)
-      );
-    })
-    .filter((registro) => {
-      if (historialFilter === "activos") {
-        return !registro.fechaBaja;
+  // Reseteo automático de página al cambiar filtros o tamaño de página
+  useEffect(() => {
+    setHistorialCurrentPage(1);
+  }, [historialSearchTerm, historialFilter, historialItemsPerPage]);
+
+  const sortedAndFilteredHistorial = useMemo(() => {
+    const result = historialRegistros
+      .filter((registro) => {
+        const nombreCompleto =
+          `${registro.apellido} ${registro.nombre}`.toLowerCase();
+        const term = historialSearchTerm.toLowerCase();
+        return (
+          nombreCompleto.includes(term) ||
+          registro.dni.includes(historialSearchTerm)
+        );
+      })
+      .filter((registro) => {
+        if (historialFilter === "activos") {
+          return !registro.fechaBaja;
+        }
+        if (historialFilter === "inactivos") {
+          return !!registro.fechaBaja;
+        }
+        return true;
+      });
+
+    return result.sort((a, b) => {
+      if (historialSortConfig.field === "nombreCompleto") {
+        const nameA = `${a.apellido} ${a.nombre}`;
+        const nameB = `${b.apellido} ${b.nombre}`;
+        const cmp = nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+        return historialSortConfig.direction === "asc" ? cmp : -cmp;
       }
-      if (historialFilter === "inactivos") {
-        return !!registro.fechaBaja;
+
+      if (historialSortConfig.field === "fechaRegistro") {
+        const timeA = new Date(a.fechaRegistro).getTime() || 0;
+        const timeB = new Date(b.fechaRegistro).getTime() || 0;
+        return historialSortConfig.direction === "asc"
+          ? timeA - timeB
+          : timeB - timeA;
       }
-      return true;
+
+      if (historialSortConfig.field === "fechaBaja") {
+        if (!a.fechaBaja && !b.fechaBaja) return 0;
+        if (!a.fechaBaja) return 1;
+        if (!b.fechaBaja) return -1;
+        const timeA = new Date(a.fechaBaja).getTime() || 0;
+        const timeB = new Date(b.fechaBaja).getTime() || 0;
+        return historialSortConfig.direction === "asc"
+          ? timeA - timeB
+          : timeB - timeA;
+      }
+
+      return 0;
     });
+  }, [
+    historialRegistros,
+    historialSearchTerm,
+    historialFilter,
+    historialSortConfig,
+  ]);
+
+  const totalHistorialItems = sortedAndFilteredHistorial.length;
+  const totalHistorialPages = Math.max(
+    1,
+    Math.ceil(totalHistorialItems / historialItemsPerPage),
+  );
+  const safeHistorialPage = Math.min(
+    historialCurrentPage,
+    totalHistorialPages,
+  );
+
+  const paginatedHistorial = useMemo(() => {
+    const startIndex = (safeHistorialPage - 1) * historialItemsPerPage;
+    return sortedAndFilteredHistorial.slice(
+      startIndex,
+      startIndex + historialItemsPerPage,
+    );
+  }, [sortedAndFilteredHistorial, safeHistorialPage, historialItemsPerPage]);
 
   // Abrir diálogo para crear/editar
   const handleOpenDialog = (socio?: Socio) => {
@@ -1990,15 +2090,93 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
-                      <TableHead>Número</TableHead>
-                      <TableHead>Nombre Completo</TableHead>
+                      <TableHead className="w-16">#</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "nombreCompleto",
+                              direction:
+                                prev.field === "nombreCompleto" &&
+                                prev.direction === "asc"
+                                  ? "desc"
+                                  : "asc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Nombre Completo
+                          {historialSortConfig.field === "nombreCompleto" ? (
+                            historialSortConfig.direction === "asc" ? (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead>DNI</TableHead>
-                      <TableHead>Fecha de Registro</TableHead>
-                      <TableHead>Fecha de Baja</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "fechaRegistro",
+                              direction:
+                                prev.field === "fechaRegistro" &&
+                                prev.direction === "desc"
+                                  ? "asc"
+                                  : "desc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Fecha de Registro
+                          {historialSortConfig.field === "fechaRegistro" ? (
+                            historialSortConfig.direction === "desc" ? (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "fechaBaja",
+                              direction:
+                                prev.field === "fechaBaja" &&
+                                prev.direction === "desc"
+                                  ? "asc"
+                                  : "desc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Fecha de Baja
+                          {historialSortConfig.field === "fechaBaja" ? (
+                            historialSortConfig.direction === "desc" ? (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredHistorial.length === 0 ? (
+                    {paginatedHistorial.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={6}
@@ -2008,7 +2186,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredHistorial.map((registro, index) => (
+                      paginatedHistorial.map((registro, index) => (
                         <Fragment key={`registro-${registro.id}`}>
                           <TableRow>
                             <TableCell className="text-center">
@@ -2031,7 +2209,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 </button>
                               )}
                             </TableCell>
-                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                              {(safeHistorialPage - 1) *
+                                historialItemsPerPage +
+                                index +
+                                1}
+                            </TableCell>
                             <TableCell>
                               {registro.apellido}, {registro.nombre}
                             </TableCell>
@@ -2072,9 +2255,114 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                 </Table>
               </div>
 
-              <div className="text-sm text-gray-500">
-                Mostrando {filteredHistorial.length} de{" "}
-                {historialRegistros.length} registros históricos
+              {/* Controles de paginación e información */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                  <span>
+                    Mostrando{" "}
+                    <strong>
+                      {totalHistorialItems === 0
+                        ? 0
+                        : (safeHistorialPage - 1) * historialItemsPerPage + 1}
+                    </strong>{" "}
+                    a{" "}
+                    <strong>
+                      {Math.min(
+                        safeHistorialPage * historialItemsPerPage,
+                        totalHistorialItems,
+                      )}
+                    </strong>{" "}
+                    de <strong>{totalHistorialItems}</strong> registros
+                    {totalHistorialItems !== historialRegistros.length && (
+                      <span className="text-gray-400 ml-1">
+                        (de {historialRegistros.length} históricos)
+                      </span>
+                    )}
+                  </span>
+
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="text-xs text-gray-500">Filas por pág:</span>
+                    <Select
+                      value={String(historialItemsPerPage)}
+                      onValueChange={(val) =>
+                        setHistorialItemsPerPage(Number(val))
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[70px]">
+                        <SelectValue placeholder="20" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {totalHistorialPages > 1 && (
+                  <Pagination className="mx-0 w-auto justify-end">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (safeHistorialPage > 1) {
+                              setHistorialCurrentPage(safeHistorialPage - 1);
+                            }
+                          }}
+                          className={
+                            safeHistorialPage <= 1
+                              ? "pointer-events-none opacity-50"
+                              : "cursor-pointer"
+                          }
+                        />
+                      </PaginationItem>
+
+                      {generarNumerosPagina(
+                        safeHistorialPage,
+                        totalHistorialPages,
+                      ).map((numPag, idx) => (
+                        <PaginationItem key={`hist-page-${idx}`}>
+                          {numPag === "ellipsis" ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              href="#"
+                              isActive={numPag === safeHistorialPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setHistorialCurrentPage(Number(numPag));
+                              }}
+                              className="cursor-pointer"
+                            >
+                              {numPag}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (safeHistorialPage < totalHistorialPages) {
+                              setHistorialCurrentPage(safeHistorialPage + 1);
+                            }
+                          }}
+                          className={
+                            safeHistorialPage >= totalHistorialPages
+                              ? "pointer-events-none opacity-50"
+                              : "cursor-pointer"
+                          }
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                )}
               </div>
             </TabsContent>
             {/* Tab de Grupos Familiares */}
