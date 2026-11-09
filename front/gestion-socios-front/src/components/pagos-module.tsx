@@ -160,6 +160,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [deportes, setDeportes] = useState<Deporte[]>([]);
   const [pagosServidor, setPagosServidor] = useState<any[]>([]);
   const [searchCuota, setSearchCuota] = useState<string>("");
+  const [searchCuotaDebounced, setSearchCuotaDebounced] = useState<string>("");
   const [filterDeportePago, setFilterDeportePago] = useState<string>("all");
   const [filterMesPago, setFilterMesPago] = useState<string>("all");
   const [filterSocioPago, setFilterSocioPago] = useState<string>("all");
@@ -168,6 +169,16 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [paginaActualPendientes, setPaginaActualPendientes] =
     useState<number>(1);
   const ITEMS_POR_PAGINA_PENDIENTES = 100;
+  const [paginaActualVencidas, setPaginaActualVencidas] = useState<number>(1);
+  const ITEMS_POR_PAGINA_VENCIDAS = 100;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchCuotaDebounced(searchCuota);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchCuota]);
 
   const generarNumerosPagina = (actual: number, total: number) => {
     if (total <= 7) {
@@ -510,7 +521,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
   // Lista exclusiva de Pendientes: ordenada alfabéticamente de la A a la Z por Apellido
   const cuotasPendientesOrdenadas = useMemo(() => {
-    const search = searchCuota.toLowerCase().trim();
+    const search = searchCuotaDebounced.toLowerCase().trim();
 
     const filtrados = pagos
       .filter((p) => p.estado === "pendiente")
@@ -547,7 +558,48 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
       return a.id.localeCompare(b.id, "es", { numeric: true });
     });
-  }, [pagos, searchCuota]);
+  }, [pagos, searchCuotaDebounced]);
+
+  // Lista exclusiva de Vencidas: ordenada alfabéticamente de la A a la Z por Apellido
+  const cuotasVencidasOrdenadas = useMemo(() => {
+    const search = searchCuotaDebounced.toLowerCase().trim();
+
+    const filtrados = pagos
+      .filter((p) => p.estado === "vencido")
+      .filter((p) => {
+        if (!search) return true;
+        const nombreCompleto = p.socio.toLowerCase();
+        const apellidoNombre =
+          p.socioApellido && p.socioNombre
+            ? `${p.socioApellido} ${p.socioNombre}`.toLowerCase()
+            : "";
+        return (
+          nombreCompleto.includes(search) ||
+          apellidoNombre.includes(search) ||
+          p.socioDNI.toLowerCase().includes(search) ||
+          p.estado.toLowerCase().includes(search) ||
+          p.conceptos.some((c) => c.concepto.toLowerCase().includes(search))
+        );
+      });
+
+    return filtrados.sort((a, b) => {
+      const compApellido = (a.socioApellido || "").localeCompare(
+        b.socioApellido || "",
+        "es",
+        { sensitivity: "base" },
+      );
+      if (compApellido !== 0) return compApellido;
+
+      const compNombre = (a.socioNombre || "").localeCompare(
+        b.socioNombre || "",
+        "es",
+        { sensitivity: "base" },
+      );
+      if (compNombre !== 0) return compNombre;
+
+      return a.id.localeCompare(b.id, "es", { numeric: true });
+    });
+  }, [pagos, searchCuotaDebounced]);
 
   // Estados y funciones para el registro de pagos
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1747,6 +1799,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
             onValueChange={(val) => {
               setActiveTab(val);
               if (val === "pendientes") setPaginaActualPendientes(1);
+              if (val === "vencidos") setPaginaActualVencidas(1);
             }}
           >
             <TabsList className="flex flex-wrap">
@@ -1774,14 +1827,18 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               </TabsTrigger>
             </TabsList>
 
-            {["todos", "pagados", "vencidos"].map((tab) => (
+            {["todos", "pagados"].map((tab) => (
               <TabsContent key={tab} value={tab}>
                 <div className="mb-4">
                   <Input
                     type="text"
                     placeholder="Buscar por socio, DNI, deporte o estado..."
                     value={searchCuota}
-                    onChange={(e) => setSearchCuota(e.target.value)}
+                    onChange={(e) => {
+                      setSearchCuota(e.target.value);
+                      setPaginaActualPendientes(1);
+                      setPaginaActualVencidas(1);
+                    }}
                     className="max-w-md"
                   />
                 </div>
@@ -1804,11 +1861,12 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         .filter((p) => {
                           if (tab === "todos") return true;
                           if (tab === "pagados") return p.estado === "pagado";
-                          if (tab === "vencidos") return p.estado === "vencido";
                           return true;
                         })
                         .filter((p) => {
-                          const search = searchCuota.toLowerCase().trim();
+                          const search = searchCuotaDebounced
+                            .toLowerCase()
+                            .trim();
                           if (!search) return true;
                           return (
                             p.socio.toLowerCase().includes(search) ||
@@ -1898,6 +1956,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         onChange={(e) => {
                           setSearchCuota(e.target.value);
                           setPaginaActualPendientes(1);
+                          setPaginaActualVencidas(1);
                         }}
                         className="max-w-md"
                       />
@@ -2037,6 +2096,193 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                   e.preventDefault();
                                   if (paginaSegura < totalPaginas) {
                                     setPaginaActualPendientes(paginaSegura + 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura >= totalPaginas
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </TabsContent>
+
+            {/* Pestaña exclusiva de Vencidas con orden A-Z por apellido y paginación de 100 filas */}
+            <TabsContent value="vencidos">
+              {(() => {
+                const totalItems = cuotasVencidasOrdenadas.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_VENCIDAS),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualVencidas),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_VENCIDAS;
+                const cuotasPaginadas = cuotasVencidasOrdenadas.slice(
+                  indiceInicio,
+                  indiceInicio + ITEMS_POR_PAGINA_VENCIDAS,
+                );
+
+                return (
+                  <>
+                    <div className="mb-4">
+                      <Input
+                        type="text"
+                        placeholder="Buscar por socio, DNI, deporte o estado..."
+                        value={searchCuota}
+                        onChange={(e) => {
+                          setSearchCuota(e.target.value);
+                          setPaginaActualPendientes(1);
+                          setPaginaActualVencidas(1);
+                        }}
+                        className="max-w-md"
+                      />
+                    </div>
+                    <div className="border rounded-lg overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Socio</TableHead>
+                            <TableHead>DNI</TableHead>
+                            <TableHead>Mes</TableHead>
+                            <TableHead>Conceptos</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Fecha del Pago</TableHead>
+                            <TableHead>Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cuotasPaginadas.length > 0 ? (
+                            cuotasPaginadas.map((pago) => (
+                              <TableRow key={pago.id}>
+                                <TableCell className="font-medium">
+                                  {pago.socioApellido
+                                    ? `${pago.socioApellido}, ${pago.socioNombre}`
+                                    : pago.socio}
+                                </TableCell>
+                                <TableCell>{pago.socioDNI}</TableCell>
+                                <TableCell>{pago.mes}</TableCell>
+                                <TableCell>
+                                  <div className="text-sm space-y-1">
+                                    {pago.conceptos.map((c, idx) => (
+                                      <div key={idx}>
+                                        <span className="text-gray-600">
+                                          {c.concepto}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <span>${pago.monto.toLocaleString()}</span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-gray-400">—</span>
+                                </TableCell>
+                                <TableCell>
+                                  {pago.fecha
+                                    ? formatearFechaDisplay(pago.fecha)
+                                    : "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={getEstadoBadge(pago.estado) as any}
+                                  >
+                                    {pago.estado}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={8}
+                                className="text-center py-6 text-gray-500"
+                              >
+                                No se encontraron cuotas vencidas para el
+                                criterio seleccionado.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                      <p className="text-sm text-gray-600">
+                        Mostrando{" "}
+                        <span className="font-medium">
+                          {totalItems === 0 ? 0 : indiceInicio + 1}
+                        </span>{" "}
+                        a{" "}
+                        <span className="font-medium">
+                          {Math.min(
+                            indiceInicio + ITEMS_POR_PAGINA_VENCIDAS,
+                            totalItems,
+                          )}
+                        </span>{" "}
+                        de <span className="font-medium">{totalItems}</span>{" "}
+                        cuotas vencidas
+                      </p>
+                      {totalPaginas > 1 && (
+                        <Pagination className="mx-0 w-auto justify-end">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura > 1) {
+                                    setPaginaActualVencidas(paginaSegura - 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura <= 1
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                            {generarNumerosPagina(
+                              paginaSegura,
+                              totalPaginas,
+                            ).map((numPag, idx) => (
+                              <PaginationItem key={`vencidas-pag-${idx}`}>
+                                {numPag === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={numPag === paginaSegura}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPaginaActualVencidas(Number(numPag));
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    {numPag}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura < totalPaginas) {
+                                    setPaginaActualVencidas(paginaSegura + 1);
                                   }
                                 }}
                                 className={
