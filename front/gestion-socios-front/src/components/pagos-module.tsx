@@ -171,6 +171,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const ITEMS_POR_PAGINA_PENDIENTES = 100;
   const [paginaActualVencidas, setPaginaActualVencidas] = useState<number>(1);
   const ITEMS_POR_PAGINA_VENCIDAS = 100;
+  const [paginaActualPagadas, setPaginaActualPagadas] = useState<number>(1);
+  const ITEMS_POR_PAGINA_PAGADAS = 100;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -598,6 +600,49 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       if (compNombre !== 0) return compNombre;
 
       return a.id.localeCompare(b.id, "es", { numeric: true });
+    });
+  }, [pagos, searchCuotaDebounced]);
+
+  // Lista exclusiva de Pagadas: ordenada por Fecha del Pago descendente (más reciente primero)
+  const cuotasPagadasOrdenadas = useMemo(() => {
+    const search = searchCuotaDebounced.toLowerCase().trim();
+
+    const filtrados = pagos
+      .filter((p) => p.estado === "pagado")
+      .filter((p) => {
+        if (!search) return true;
+        const nombreCompleto = p.socio.toLowerCase();
+        const apellidoNombre =
+          p.socioApellido && p.socioNombre
+            ? `${p.socioApellido} ${p.socioNombre}`.toLowerCase()
+            : "";
+        return (
+          nombreCompleto.includes(search) ||
+          apellidoNombre.includes(search) ||
+          p.socioDNI.toLowerCase().includes(search) ||
+          p.estado.toLowerCase().includes(search) ||
+          p.conceptos.some((c) => c.concepto.toLowerCase().includes(search))
+        );
+      });
+
+    return filtrados.sort((a, b) => {
+      const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+      const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+
+      const validoA = !isNaN(fechaA) && fechaA > 0;
+      const validoB = !isNaN(fechaB) && fechaB > 0;
+
+      if (validoA && validoB) {
+        if (fechaB !== fechaA) {
+          return fechaB - fechaA;
+        }
+      } else if (validoA && !validoB) {
+        return -1;
+      } else if (!validoA && validoB) {
+        return 1;
+      }
+
+      return b.id.localeCompare(a.id, "es", { numeric: true });
     });
   }, [pagos, searchCuotaDebounced]);
 
@@ -1798,6 +1843,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
             value={activeTab}
             onValueChange={(val) => {
               setActiveTab(val);
+              if (val === "pagados") setPaginaActualPagadas(1);
               if (val === "pendientes") setPaginaActualPendientes(1);
               if (val === "vencidos") setPaginaActualVencidas(1);
             }}
@@ -1827,57 +1873,55 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               </TabsTrigger>
             </TabsList>
 
-            {["todos", "pagados"].map((tab) => (
-              <TabsContent key={tab} value={tab}>
-                <div className="mb-4">
-                  <Input
-                    type="text"
-                    placeholder="Buscar por socio, DNI, deporte o estado..."
-                    value={searchCuota}
-                    onChange={(e) => {
-                      setSearchCuota(e.target.value);
-                      setPaginaActualPendientes(1);
-                      setPaginaActualVencidas(1);
-                    }}
-                    className="max-w-md"
-                  />
-                </div>
-                <div className="border rounded-lg overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Socio</TableHead>
-                        <TableHead>DNI</TableHead>
-                        <TableHead>Mes</TableHead>
-                        <TableHead>Conceptos</TableHead>
-                        <TableHead>Monto</TableHead>
-                        <TableHead>Método</TableHead>
-                        <TableHead>Fecha del Pago</TableHead>
-                        <TableHead>Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pagos
-                        .filter((p) => {
-                          if (tab === "todos") return true;
-                          if (tab === "pagados") return p.estado === "pagado";
-                          return true;
-                        })
-                        .filter((p) => {
-                          const search = searchCuotaDebounced
-                            .toLowerCase()
-                            .trim();
-                          if (!search) return true;
-                          return (
-                            p.socio.toLowerCase().includes(search) ||
-                            p.socioDNI.toLowerCase().includes(search) ||
-                            p.estado.toLowerCase().includes(search) ||
-                            p.conceptos.some((c) =>
-                              c.concepto.toLowerCase().includes(search),
-                            )
-                          );
-                        })
-                        .map((pago) => (
+            {/* Pestaña general de Cuotas */}
+            <TabsContent value="todos">
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  placeholder="Buscar por socio, DNI, deporte o estado..."
+                  value={searchCuota}
+                  onChange={(e) => {
+                    setSearchCuota(e.target.value);
+                    setPaginaActualPagadas(1);
+                    setPaginaActualPendientes(1);
+                    setPaginaActualVencidas(1);
+                  }}
+                  className="max-w-md"
+                />
+              </div>
+              <div className="border rounded-lg overflow-x-auto min-h-[520px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Socio</TableHead>
+                      <TableHead>DNI</TableHead>
+                      <TableHead>Mes</TableHead>
+                      <TableHead>Conceptos</TableHead>
+                      <TableHead>Monto</TableHead>
+                      <TableHead>Método</TableHead>
+                      <TableHead>Fecha del Pago</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      const cuotasFiltradas = pagos.filter((p) => {
+                        const search = searchCuotaDebounced
+                          .toLowerCase()
+                          .trim();
+                        if (!search) return true;
+                        return (
+                          p.socio.toLowerCase().includes(search) ||
+                          p.socioDNI.toLowerCase().includes(search) ||
+                          p.estado.toLowerCase().includes(search) ||
+                          p.conceptos.some((c) =>
+                            c.concepto.toLowerCase().includes(search),
+                          )
+                        );
+                      });
+
+                      return cuotasFiltradas.length > 0 ? (
+                        cuotasFiltradas.map((pago) => (
                           <TableRow key={pago.id}>
                             <TableCell>{pago.socio}</TableCell>
                             <TableCell>{pago.socioDNI}</TableCell>
@@ -1920,12 +1964,218 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               </Badge>
                             </TableCell>
                           </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </TabsContent>
-            ))}
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="text-center py-20 text-gray-500"
+                          >
+                            No se encontraron cuotas para el criterio
+                            seleccionado.
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            {/* Pestaña exclusiva de Pagadas con orden descendente por fecha de pago y paginación de 100 filas */}
+            <TabsContent value="pagados">
+              {(() => {
+                const totalItems = cuotasPagadasOrdenadas.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_PAGADAS),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualPagadas),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_PAGADAS;
+                const cuotasPaginadas = cuotasPagadasOrdenadas.slice(
+                  indiceInicio,
+                  indiceInicio + ITEMS_POR_PAGINA_PAGADAS,
+                );
+
+                return (
+                  <>
+                    <div className="mb-4">
+                      <Input
+                        type="text"
+                        placeholder="Buscar por socio, DNI, deporte o estado..."
+                        value={searchCuota}
+                        onChange={(e) => {
+                          setSearchCuota(e.target.value);
+                          setPaginaActualPagadas(1);
+                          setPaginaActualPendientes(1);
+                          setPaginaActualVencidas(1);
+                        }}
+                        className="max-w-md"
+                      />
+                    </div>
+                    <div className="border rounded-lg overflow-x-auto min-h-[520px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Socio</TableHead>
+                            <TableHead>DNI</TableHead>
+                            <TableHead>Mes</TableHead>
+                            <TableHead>Conceptos</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Fecha del Pago</TableHead>
+                            <TableHead>Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cuotasPaginadas.length > 0 ? (
+                            cuotasPaginadas.map((pago) => (
+                              <TableRow key={pago.id}>
+                                <TableCell className="font-medium">
+                                  {pago.socioApellido
+                                    ? `${pago.socioApellido}, ${pago.socioNombre}`
+                                    : pago.socio}
+                                </TableCell>
+                                <TableCell>{pago.socioDNI}</TableCell>
+                                <TableCell>{pago.mes}</TableCell>
+                                <TableCell>
+                                  <div className="text-sm space-y-1">
+                                    {pago.conceptos.map((c, idx) => (
+                                      <div key={idx}>
+                                        <span className="text-gray-600">
+                                          {c.concepto}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <span>${pago.monto.toLocaleString()}</span>
+                                </TableCell>
+                                <TableCell>
+                                  {pago.metodoPago &&
+                                  pago.metodoPago !== "—" ? (
+                                    <Badge variant="outline">
+                                      {getMetodoPagoLabel(pago.metodoPago)}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {pago.fecha
+                                    ? formatearFechaDisplay(pago.fecha)
+                                    : "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={getEstadoBadge(pago.estado) as any}
+                                  >
+                                    {pago.estado}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={8}
+                                className="text-center py-20 text-gray-500"
+                              >
+                                No se encontraron cuotas pagadas para el
+                                criterio seleccionado.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                      <p className="text-sm text-gray-600">
+                        Mostrando{" "}
+                        <span className="font-medium">
+                          {totalItems === 0 ? 0 : indiceInicio + 1}
+                        </span>{" "}
+                        a{" "}
+                        <span className="font-medium">
+                          {Math.min(
+                            indiceInicio + ITEMS_POR_PAGINA_PAGADAS,
+                            totalItems,
+                          )}
+                        </span>{" "}
+                        de <span className="font-medium">{totalItems}</span>{" "}
+                        cuotas pagadas
+                      </p>
+                      {totalPaginas > 1 && (
+                        <Pagination className="mx-0 w-auto justify-end">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura > 1) {
+                                    setPaginaActualPagadas(paginaSegura - 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura <= 1
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                            {generarNumerosPagina(
+                              paginaSegura,
+                              totalPaginas,
+                            ).map((numPag, idx) => (
+                              <PaginationItem key={`pagadas-pag-${idx}`}>
+                                {numPag === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={numPag === paginaSegura}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPaginaActualPagadas(Number(numPag));
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    {numPag}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura < totalPaginas) {
+                                    setPaginaActualPagadas(paginaSegura + 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura >= totalPaginas
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </TabsContent>
 
             {/* Pestaña exclusiva de Pendientes con orden A-Z por apellido y paginación de 100 filas */}
             <TabsContent value="pendientes">
@@ -1955,13 +2205,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         value={searchCuota}
                         onChange={(e) => {
                           setSearchCuota(e.target.value);
+                          setPaginaActualPagadas(1);
                           setPaginaActualPendientes(1);
                           setPaginaActualVencidas(1);
                         }}
                         className="max-w-md"
                       />
                     </div>
-                    <div className="border rounded-lg overflow-x-auto">
+                    <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -2021,7 +2272,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                             <TableRow>
                               <TableCell
                                 colSpan={8}
-                                className="text-center py-6 text-gray-500"
+                                className="text-center py-20 text-gray-500"
                               >
                                 No se encontraron cuotas pendientes para el
                                 criterio seleccionado.
@@ -2142,13 +2393,14 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                         value={searchCuota}
                         onChange={(e) => {
                           setSearchCuota(e.target.value);
+                          setPaginaActualPagadas(1);
                           setPaginaActualPendientes(1);
                           setPaginaActualVencidas(1);
                         }}
                         className="max-w-md"
                       />
                     </div>
-                    <div className="border rounded-lg overflow-x-auto">
+                    <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -2208,7 +2460,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                             <TableRow>
                               <TableCell
                                 colSpan={8}
-                                className="text-center py-6 text-gray-500"
+                                className="text-center py-20 text-gray-500"
                               >
                                 No se encontraron cuotas vencidas para el
                                 criterio seleccionado.
@@ -2375,7 +2627,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </div>
               </div>
 
-              <div className="border rounded-lg overflow-x-auto">
+              <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2389,51 +2641,50 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Array.isArray(pagosServidor) &&
-                    pagosServidor.length > 0 ? (
-                      pagosServidor
-                        .filter((pago: any) => {
-                          const matchesDeporte = (() => {
-                            if (filterDeportePago === "all") return true;
-                            const cuotasDePago = cuotas.filter(
-                              (c) => Number(c.pagoId) === Number(pago.id),
-                            );
-                            return cuotasDePago.some(
-                              (c) =>
-                                Number(c.deporteId) ===
-                                Number(filterDeportePago),
-                            );
-                          })();
+                    {(() => {
+                      const pagosFiltradosLista = (
+                        Array.isArray(pagosServidor) ? pagosServidor : []
+                      ).filter((pago: any) => {
+                        const matchesDeporte = (() => {
+                          if (filterDeportePago === "all") return true;
+                          const cuotasDePago = cuotas.filter(
+                            (c) => Number(c.pagoId) === Number(pago.id),
+                          );
+                          return cuotasDePago.some(
+                            (c) =>
+                              Number(c.deporteId) === Number(filterDeportePago),
+                          );
+                        })();
 
-                          const matchesMes = (() => {
-                            if (filterMesPago === "all") return true;
-                            if (!pago.fechaPago) return false;
-                            const mesPago =
-                              new Date(pago.fechaPago).getMonth() + 1;
-                            return mesPago === Number(filterMesPago);
-                          })();
+                        const matchesMes = (() => {
+                          if (filterMesPago === "all") return true;
+                          if (!pago.fechaPago) return false;
+                          const mesPago =
+                            new Date(pago.fechaPago).getMonth() + 1;
+                          return mesPago === Number(filterMesPago);
+                        })();
 
-                          const matchesSocio = (() => {
-                            if (filterSocioPago === "all" || !filterSocioPago)
-                              return true;
-                            const q = String(filterSocioPago)
-                              .toLowerCase()
-                              .trim();
-                            const socio = personas.find(
-                              (p) => Number(p.id) === Number(pago.socioId),
-                            );
-                            if (!socio) return false;
-                            const nombreCompleto =
-                              `${socio.nombre} ${socio.apellido}`.toLowerCase();
-                            const dni = String(socio.dni || "").toLowerCase();
-                            return (
-                              nombreCompleto.includes(q) || dni.includes(q)
-                            );
-                          })();
+                        const matchesSocio = (() => {
+                          if (filterSocioPago === "all" || !filterSocioPago)
+                            return true;
+                          const q = String(filterSocioPago)
+                            .toLowerCase()
+                            .trim();
+                          const socio = personas.find(
+                            (p) => Number(p.id) === Number(pago.socioId),
+                          );
+                          if (!socio) return false;
+                          const nombreCompleto =
+                            `${socio.nombre} ${socio.apellido}`.toLowerCase();
+                          const dni = String(socio.dni || "").toLowerCase();
+                          return nombreCompleto.includes(q) || dni.includes(q);
+                        })();
 
-                          return matchesDeporte && matchesMes && matchesSocio;
-                        })
-                        .map((pago: any) => {
+                        return matchesDeporte && matchesMes && matchesSocio;
+                      });
+
+                      return pagosFiltradosLista.length > 0 ? (
+                        pagosFiltradosLista.map((pago: any) => {
                           const socio = personas.find(
                             (p) => Number(p.id) === Number(pago.socioId),
                           );
@@ -2630,16 +2881,18 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                             </>
                           );
                         })
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={7}
-                          className="text-center text-gray-500"
-                        >
-                          No hay pagos registrados
-                        </TableCell>
-                      </TableRow>
-                    )}
+                      ) : (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="text-center py-20 text-gray-500"
+                          >
+                            No se encontraron pagos registrados para el criterio
+                            seleccionado.
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })()}
                   </TableBody>
                 </Table>
               </div>
@@ -2670,7 +2923,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                     />
                   </div>
 
-                  <div className="border rounded-lg overflow-x-auto">
+                  <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -2707,7 +2960,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           <TableRow>
                             <TableCell
                               colSpan={5}
-                              className="text-center text-gray-500"
+                              className="text-center py-20 text-gray-500"
                             >
                               No se encontraron resultados
                             </TableCell>
@@ -3029,7 +3282,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                 </Card>
               )}
 
-              <div className="border rounded-lg overflow-x-auto">
+              <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -3090,7 +3343,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                       <TableRow>
                         <TableCell
                           colSpan={7}
-                          className="text-center py-6 text-gray-500"
+                          className="text-center py-20 text-gray-500"
                         >
                           {cargandoReporte
                             ? "Buscando ingresos..."
