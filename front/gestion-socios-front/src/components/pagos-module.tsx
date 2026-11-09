@@ -173,6 +173,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const ITEMS_POR_PAGINA_VENCIDAS = 100;
   const [paginaActualPagadas, setPaginaActualPagadas] = useState<number>(1);
   const ITEMS_POR_PAGINA_PAGADAS = 100;
+  const [paginaActualIngresosSocio, setPaginaActualIngresosSocio] =
+    useState<number>(1);
+  const ITEMS_POR_PAGINA_INGRESOS_SOCIO = 50;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -645,6 +648,44 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return b.id.localeCompare(a.id, "es", { numeric: true });
     });
   }, [pagos, searchCuotaDebounced]);
+
+  // Lista de Ingresos por socio: ordenada por Último Pago descendente (más reciente primero)
+  const ingresosPorSocioOrdenados = useMemo(() => {
+    const search = searchIngresosPorSocio.toLowerCase().trim();
+
+    const filtrados = ingresosPorSocio.filter((item) => {
+      if (!search) return true;
+      const nombreCompleto = `${item.nombre} ${item.apellido}`.toLowerCase();
+      const apellidoNombre = `${item.apellido} ${item.nombre}`.toLowerCase();
+      return (
+        nombreCompleto.includes(search) ||
+        apellidoNombre.includes(search) ||
+        (item.dni || "").toLowerCase().includes(search) ||
+        (item.apellido || "").toLowerCase().includes(search) ||
+        (item.nombre || "").toLowerCase().includes(search)
+      );
+    });
+
+    return filtrados.sort((a, b) => {
+      const fechaA = a.ultimoPago ? new Date(a.ultimoPago).getTime() : 0;
+      const fechaB = b.ultimoPago ? new Date(b.ultimoPago).getTime() : 0;
+
+      const validoA = !isNaN(fechaA) && fechaA > 0;
+      const validoB = !isNaN(fechaB) && fechaB > 0;
+
+      if (validoA && validoB) {
+        if (fechaB !== fechaA) {
+          return fechaB - fechaA;
+        }
+      } else if (validoA && !validoB) {
+        return -1;
+      } else if (!validoA && validoB) {
+        return 1;
+      }
+
+      return Number(a.socioId) - Number(b.socioId);
+    });
+  }, [ingresosPorSocio, searchIngresosPorSocio]);
 
   // Estados y funciones para el registro de pagos
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1467,18 +1508,6 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     });
   };
 
-  const ingresosPorSocioFiltrados = ingresosPorSocio.filter((item) => {
-    const search = searchIngresosPorSocio.toLowerCase().trim();
-    if (!search) return true;
-    const nombreCompleto = `${item.nombre} ${item.apellido}`.toLowerCase();
-    return (
-      nombreCompleto.includes(search) ||
-      item.dni.toLowerCase().includes(search) ||
-      item.apellido.toLowerCase().includes(search) ||
-      item.nombre.toLowerCase().includes(search)
-    );
-  });
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1846,6 +1875,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               if (val === "pagados") setPaginaActualPagadas(1);
               if (val === "pendientes") setPaginaActualPendientes(1);
               if (val === "vencidos") setPaginaActualVencidas(1);
+              if (val === "ingresosPorSocio") setPaginaActualIngresosSocio(1);
             }}
           >
             <TabsList className="flex flex-wrap">
@@ -2899,78 +2929,183 @@ export function PagosModule({ userRole }: PagosModuleProps) {
             </TabsContent>
 
             <TabsContent value="ingresosPorSocio">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Ingresos por socio</CardTitle>
-                      <CardDescription>
-                        Resumen de pagos agrupados por socio
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4">
-                    <Input
-                      type="text"
-                      placeholder="Buscar por nombre, apellido o DNI..."
-                      value={searchIngresosPorSocio}
-                      onChange={(e) =>
-                        setSearchIngresosPorSocio(e.target.value)
-                      }
-                      className="max-w-md"
-                    />
-                  </div>
+              {(() => {
+                const totalItems = ingresosPorSocioOrdenados.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_INGRESOS_SOCIO),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualIngresosSocio),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_INGRESOS_SOCIO;
+                const sociosPaginados = ingresosPorSocioOrdenados.slice(
+                  indiceInicio,
+                  indiceInicio + ITEMS_POR_PAGINA_INGRESOS_SOCIO,
+                );
 
-                  <div className="border rounded-lg overflow-x-auto min-h-[520px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Socio</TableHead>
-                          <TableHead>DNI</TableHead>
-                          <TableHead>Total pagado</TableHead>
-                          <TableHead>Cantidad de pagos</TableHead>
-                          <TableHead>Último pago</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {ingresosPorSocioFiltrados.length > 0 ? (
-                          ingresosPorSocioFiltrados.map((item) => (
-                            <TableRow key={item.socioId}>
-                              <TableCell>
-                                {item.nombre} {item.apellido}
-                              </TableCell>
-                              <TableCell>{item.dni}</TableCell>
-                              <TableCell>
-                                $
-                                {Number(item.totalPagado || 0).toLocaleString()}
-                              </TableCell>
-                              <TableCell>{item.cantidadPagos}</TableCell>
-                              <TableCell>
-                                {item.ultimoPago
-                                  ? new Date(
-                                      item.ultimoPago,
-                                    ).toLocaleDateString("es-ES")
-                                  : "-"}
-                              </TableCell>
+                return (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Ingresos por socio</CardTitle>
+                          <CardDescription>
+                            Resumen de pagos agrupados por socio
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mb-4">
+                        <Input
+                          type="text"
+                          placeholder="Buscar por nombre, apellido o DNI..."
+                          value={searchIngresosPorSocio}
+                          onChange={(e) => {
+                            setSearchIngresosPorSocio(e.target.value);
+                            setPaginaActualIngresosSocio(1);
+                          }}
+                          className="max-w-md"
+                        />
+                      </div>
+
+                      <div className="border rounded-lg overflow-x-auto min-h-[520px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Socio</TableHead>
+                              <TableHead>DNI</TableHead>
+                              <TableHead>Total pagado</TableHead>
+                              <TableHead>Cantidad de pagos</TableHead>
+                              <TableHead>Último pago</TableHead>
                             </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell
-                              colSpan={5}
-                              className="text-center py-20 text-gray-500"
-                            >
-                              No se encontraron resultados
-                            </TableCell>
-                          </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sociosPaginados.length > 0 ? (
+                              sociosPaginados.map((item) => (
+                                <TableRow key={item.socioId}>
+                                  <TableCell>
+                                    {item.nombre} {item.apellido}
+                                  </TableCell>
+                                  <TableCell>{item.dni}</TableCell>
+                                  <TableCell>
+                                    $
+                                    {Number(
+                                      item.totalPagado || 0,
+                                    ).toLocaleString()}
+                                  </TableCell>
+                                  <TableCell>{item.cantidadPagos}</TableCell>
+                                  <TableCell>
+                                    {formatearFechaDisplay(item.ultimoPago)}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={5}
+                                  className="text-center py-20 text-gray-500"
+                                >
+                                  No se encontraron resultados
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                        <p className="text-sm text-gray-600">
+                          Mostrando{" "}
+                          <span className="font-medium">
+                            {totalItems === 0 ? 0 : indiceInicio + 1}
+                          </span>{" "}
+                          a{" "}
+                          <span className="font-medium">
+                            {Math.min(
+                              indiceInicio + ITEMS_POR_PAGINA_INGRESOS_SOCIO,
+                              totalItems,
+                            )}
+                          </span>{" "}
+                          de <span className="font-medium">{totalItems}</span>{" "}
+                          socios
+                        </p>
+                        {totalPaginas > 1 && (
+                          <Pagination className="mx-0 w-auto justify-end">
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (paginaSegura > 1) {
+                                      setPaginaActualIngresosSocio(
+                                        paginaSegura - 1,
+                                      );
+                                    }
+                                  }}
+                                  className={
+                                    paginaSegura <= 1
+                                      ? "pointer-events-none opacity-50"
+                                      : "cursor-pointer"
+                                  }
+                                />
+                              </PaginationItem>
+                              {generarNumerosPagina(
+                                paginaSegura,
+                                totalPaginas,
+                              ).map((numPag, idx) => (
+                                <PaginationItem
+                                  key={`ingresos-socio-pag-${idx}`}
+                                >
+                                  {numPag === "ellipsis" ? (
+                                    <PaginationEllipsis />
+                                  ) : (
+                                    <PaginationLink
+                                      href="#"
+                                      isActive={numPag === paginaSegura}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        setPaginaActualIngresosSocio(
+                                          Number(numPag),
+                                        );
+                                      }}
+                                      className="cursor-pointer"
+                                    >
+                                      {numPag}
+                                    </PaginationLink>
+                                  )}
+                                </PaginationItem>
+                              ))}
+                              <PaginationItem>
+                                <PaginationNext
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (paginaSegura < totalPaginas) {
+                                      setPaginaActualIngresosSocio(
+                                        paginaSegura + 1,
+                                      );
+                                    }
+                                  }}
+                                  className={
+                                    paginaSegura >= totalPaginas
+                                      ? "pointer-events-none opacity-50"
+                                      : "cursor-pointer"
+                                  }
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </Pagination>
                         )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
             </TabsContent>
 
             {/* Listado y Reporte por Fecha o Rango */}
