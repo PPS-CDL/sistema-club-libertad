@@ -176,6 +176,8 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [paginaActualIngresosSocio, setPaginaActualIngresosSocio] =
     useState<number>(1);
   const ITEMS_POR_PAGINA_INGRESOS_SOCIO = 50;
+  const [paginaActualPagos, setPaginaActualPagos] = useState<number>(1);
+  const ITEMS_POR_PAGINA_PAGOS = 50;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -234,6 +236,25 @@ export function PagosModule({ userRole }: PagosModuleProps) {
     ],
     [deportes],
   );
+
+  const [deportePagoAbierto, setDeportePagoAbierto] = useState(false);
+  const [busquedaDeportePago, setBusquedaDeportePago] = useState("");
+
+  const busquedaDeportePagoNormalizada =
+    normalizarBusquedaDeporte(busquedaDeportePago);
+  const opcionesDeportePagoFiltradas = opcionesDeportes.filter((opcion) =>
+    normalizarBusquedaDeporte(opcion.label).includes(
+      busquedaDeportePagoNormalizada,
+    ),
+  );
+  const nombreDeportePago =
+    opcionesDeportes.find((opcion) => opcion.value === filterDeportePago)
+      ?.label || "Todos los deportes";
+
+  const cambiarAperturaDeportePago = (abierto: boolean) => {
+    setDeportePagoAbierto(abierto);
+    if (!abierto) setBusquedaDeportePago("");
+  };
 
   const [filterDeporteIngreso, setFilterDeporteIngreso] =
     useState<string>("all");
@@ -686,6 +707,72 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       return Number(a.socioId) - Number(b.socioId);
     });
   }, [ingresosPorSocio, searchIngresosPorSocio]);
+
+  // Lista exclusiva de Pagos: filtrada y ordenada por Fecha de Pago descendente (más reciente primero)
+  const pagosFiltradosOrdenados = useMemo(() => {
+    const lista = (Array.isArray(pagosServidor) ? pagosServidor : []).filter(
+      (pago: any) => {
+        const matchesDeporte = (() => {
+          if (filterDeportePago === "all") return true;
+          const cuotasDePago = cuotas.filter(
+            (c) => Number(c.pagoId) === Number(pago.id),
+          );
+          return cuotasDePago.some(
+            (c) => Number(c.deporteId) === Number(filterDeportePago),
+          );
+        })();
+
+        const matchesMes = (() => {
+          if (filterMesPago === "all") return true;
+          if (!pago.fechaPago) return false;
+          const mesPago = new Date(pago.fechaPago).getMonth() + 1;
+          return mesPago === Number(filterMesPago);
+        })();
+
+        const matchesSocio = (() => {
+          if (filterSocioPago === "all" || !filterSocioPago) return true;
+          const q = String(filterSocioPago).toLowerCase().trim();
+          const socio = personas.find(
+            (p) => Number(p.id) === Number(pago.socioId),
+          );
+          if (!socio) return false;
+          const nombreCompleto =
+            `${socio.nombre} ${socio.apellido}`.toLowerCase();
+          const dni = String(socio.dni || "").toLowerCase();
+          return nombreCompleto.includes(q) || dni.includes(q);
+        })();
+
+        return matchesDeporte && matchesMes && matchesSocio;
+      },
+    );
+
+    return lista.sort((a, b) => {
+      const fechaA = a.fechaPago ? new Date(a.fechaPago).getTime() : 0;
+      const fechaB = b.fechaPago ? new Date(b.fechaPago).getTime() : 0;
+
+      const validoA = !isNaN(fechaA) && fechaA > 0;
+      const validoB = !isNaN(fechaB) && fechaB > 0;
+
+      if (validoA && validoB) {
+        if (fechaB !== fechaA) {
+          return fechaB - fechaA;
+        }
+      } else if (validoA && !validoB) {
+        return -1;
+      } else if (!validoA && validoB) {
+        return 1;
+      }
+
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [
+    pagosServidor,
+    filterDeportePago,
+    filterMesPago,
+    filterSocioPago,
+    cuotas,
+    personas,
+  ]);
 
   // Estados y funciones para el registro de pagos
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1875,6 +1962,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               if (val === "pagados") setPaginaActualPagadas(1);
               if (val === "pendientes") setPaginaActualPendientes(1);
               if (val === "vencidos") setPaginaActualVencidas(1);
+              if (val === "pagos") setPaginaActualPagos(1);
               if (val === "ingresosPorSocio") setPaginaActualIngresosSocio(1);
             }}
           >
@@ -2585,347 +2673,471 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
             {/* Lista alterna de Pagos */}
             <TabsContent value="pagos">
-              <div className="mb-4 flex flex-col md:flex-row md:items-center gap-3">
-                <div className="flex items-center gap-3">
-                  <Label
-                    htmlFor="filterDeportePago"
-                    className="whitespace-nowrap"
-                  >
-                    Filtrar por deporte:
-                  </Label>
-                  <Select
-                    value={filterDeportePago}
-                    onValueChange={setFilterDeportePago}
-                  >
-                    <SelectTrigger id="filterDeportePago" className="w-64">
-                      <SelectValue placeholder="Todos los deportes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los deportes</SelectItem>
-                      {deportes.map((deporte) => (
-                        <SelectItem key={deporte.id} value={String(deporte.id)}>
-                          {deporte.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {(() => {
+                const totalItems = pagosFiltradosOrdenados.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_PAGOS),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualPagos),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_PAGOS;
+                const pagosPaginados = pagosFiltradosOrdenados.slice(
+                  indiceInicio,
+                  indiceInicio + ITEMS_POR_PAGINA_PAGOS,
+                );
 
-                <div className="flex items-center gap-3">
-                  <Label htmlFor="filterMesPago" className="whitespace-nowrap">
-                    Filtrar por mes:
-                  </Label>
-                  <Select
-                    value={filterMesPago}
-                    onValueChange={setFilterMesPago}
-                  >
-                    <SelectTrigger id="filterMesPago" className="w-48">
-                      <SelectValue placeholder="Todos los meses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los meses</SelectItem>
-                      <SelectItem value="1">Enero</SelectItem>
-                      <SelectItem value="2">Febrero</SelectItem>
-                      <SelectItem value="3">Marzo</SelectItem>
-                      <SelectItem value="4">Abril</SelectItem>
-                      <SelectItem value="5">Mayo</SelectItem>
-                      <SelectItem value="6">Junio</SelectItem>
-                      <SelectItem value="7">Julio</SelectItem>
-                      <SelectItem value="8">Agosto</SelectItem>
-                      <SelectItem value="9">Septiembre</SelectItem>
-                      <SelectItem value="10">Octubre</SelectItem>
-                      <SelectItem value="11">Noviembre</SelectItem>
-                      <SelectItem value="12">Diciembre</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                return (
+                  <>
+                    <div className="mb-4 flex flex-col md:flex-row md:items-center gap-3">
+                      <div className="flex items-center gap-3">
+                        <Label
+                          htmlFor="filtro-deporte-pago"
+                          className="whitespace-nowrap"
+                        >
+                          Filtrar por deporte:
+                        </Label>
+                        <Popover
+                          open={deportePagoAbierto}
+                          onOpenChange={cambiarAperturaDeportePago}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              id="filtro-deporte-pago"
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={deportePagoAbierto}
+                              aria-label={`Filtrar por deporte: ${nombreDeportePago}`}
+                              className="w-64 justify-between gap-2 font-normal"
+                            >
+                              <span className="truncate">
+                                {nombreDeportePago}
+                              </span>
+                              <ChevronsUpDown
+                                className="h-4 w-4 shrink-0 opacity-50"
+                                aria-hidden="true"
+                              />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-[var(--radix-popover-trigger-width)] p-0"
+                            align="start"
+                          >
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar deporte..."
+                                aria-label="Buscar disciplina o deporte"
+                                value={busquedaDeportePago}
+                                onValueChange={setBusquedaDeportePago}
+                              />
+                              <CommandList>
+                                <CommandEmpty>
+                                  No se encontraron deportes.
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {opcionesDeportePagoFiltradas.map(
+                                    (opcion) => (
+                                      <CommandItem
+                                        key={opcion.value}
+                                        value={opcion.value}
+                                        onSelect={() => {
+                                          setFilterDeportePago(opcion.value);
+                                          setPaginaActualPagos(1);
+                                          cambiarAperturaDeportePago(false);
+                                        }}
+                                      >
+                                        {opcion.label}
+                                      </CommandItem>
+                                    ),
+                                  )}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
 
-                <div className="flex items-center gap-3">
-                  <Label
-                    htmlFor="filterSocioPago"
-                    className="whitespace-nowrap"
-                  >
-                    Filtrar por socio:
-                  </Label>
-                  <Input
-                    id="filterSocioPago"
-                    value={filterSocioPago === "all" ? "" : filterSocioPago}
-                    onChange={(e) => setFilterSocioPago(e.target.value)}
-                    placeholder="Buscar por nombre, apellido o DNI..."
-                    className="w-64"
-                  />
-                </div>
-              </div>
+                      <div className="flex items-center gap-3">
+                        <Label
+                          htmlFor="filterMesPago"
+                          className="whitespace-nowrap"
+                        >
+                          Filtrar por mes:
+                        </Label>
+                        <Select
+                          value={filterMesPago}
+                          onValueChange={(val) => {
+                            setFilterMesPago(val);
+                            setPaginaActualPagos(1);
+                          }}
+                        >
+                          <SelectTrigger id="filterMesPago" className="w-48">
+                            <SelectValue placeholder="Todos los meses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos los meses</SelectItem>
+                            <SelectItem value="1">Enero</SelectItem>
+                            <SelectItem value="2">Febrero</SelectItem>
+                            <SelectItem value="3">Marzo</SelectItem>
+                            <SelectItem value="4">Abril</SelectItem>
+                            <SelectItem value="5">Mayo</SelectItem>
+                            <SelectItem value="6">Junio</SelectItem>
+                            <SelectItem value="7">Julio</SelectItem>
+                            <SelectItem value="8">Agosto</SelectItem>
+                            <SelectItem value="9">Septiembre</SelectItem>
+                            <SelectItem value="10">Octubre</SelectItem>
+                            <SelectItem value="11">Noviembre</SelectItem>
+                            <SelectItem value="12">Diciembre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-              <div className="border rounded-lg overflow-x-auto min-h-[520px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10"></TableHead>
-                      <TableHead>Nombre y Apellido</TableHead>
-                      <TableHead>DNI</TableHead>
-                      <TableHead>Cuotas Pagadas</TableHead>
-                      <TableHead>Monto Total</TableHead>
-                      <TableHead>Fecha de Pago</TableHead>
-                      <TableHead>Observaciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      const pagosFiltradosLista = (
-                        Array.isArray(pagosServidor) ? pagosServidor : []
-                      ).filter((pago: any) => {
-                        const matchesDeporte = (() => {
-                          if (filterDeportePago === "all") return true;
-                          const cuotasDePago = cuotas.filter(
-                            (c) => Number(c.pagoId) === Number(pago.id),
-                          );
-                          return cuotasDePago.some(
-                            (c) =>
-                              Number(c.deporteId) === Number(filterDeportePago),
-                          );
-                        })();
+                      <div className="flex items-center gap-3">
+                        <Label
+                          htmlFor="filterSocioPago"
+                          className="whitespace-nowrap"
+                        >
+                          Filtrar por socio:
+                        </Label>
+                        <Input
+                          id="filterSocioPago"
+                          value={
+                            filterSocioPago === "all" ? "" : filterSocioPago
+                          }
+                          onChange={(e) => {
+                            setFilterSocioPago(e.target.value);
+                            setPaginaActualPagos(1);
+                          }}
+                          placeholder="Buscar por nombre, apellido o DNI..."
+                          className="w-64"
+                        />
+                      </div>
+                    </div>
 
-                        const matchesMes = (() => {
-                          if (filterMesPago === "all") return true;
-                          if (!pago.fechaPago) return false;
-                          const mesPago =
-                            new Date(pago.fechaPago).getMonth() + 1;
-                          return mesPago === Number(filterMesPago);
-                        })();
-
-                        const matchesSocio = (() => {
-                          if (filterSocioPago === "all" || !filterSocioPago)
-                            return true;
-                          const q = String(filterSocioPago)
-                            .toLowerCase()
-                            .trim();
-                          const socio = personas.find(
-                            (p) => Number(p.id) === Number(pago.socioId),
-                          );
-                          if (!socio) return false;
-                          const nombreCompleto =
-                            `${socio.nombre} ${socio.apellido}`.toLowerCase();
-                          const dni = String(socio.dni || "").toLowerCase();
-                          return nombreCompleto.includes(q) || dni.includes(q);
-                        })();
-
-                        return matchesDeporte && matchesMes && matchesSocio;
-                      });
-
-                      return pagosFiltradosLista.length > 0 ? (
-                        pagosFiltradosLista.map((pago: any) => {
-                          const socio = personas.find(
-                            (p) => Number(p.id) === Number(pago.socioId),
-                          );
-                          const cuotasDePago = cuotas.filter(
-                            (c) => Number(c.pagoId) === Number(pago.id),
-                          );
-                          const cuotasDeportivasDePago = cuotasDePago.filter(
-                            (c) => !c.esSocial,
-                          );
-                          const cuotasSocialesDePago = cuotasDePago.filter(
-                            (c) => c.esSocial,
-                          );
-                          const deportesNombres = cuotasDeportivasDePago
-                            .map((c) => {
-                              const deporte = deportes.find(
-                                (d) => Number(d.id) === Number(c.deporteId),
+                    <div className="border rounded-lg overflow-x-auto min-h-[520px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10"></TableHead>
+                            <TableHead>Nombre y Apellido</TableHead>
+                            <TableHead>DNI</TableHead>
+                            <TableHead>Cuotas Pagadas</TableHead>
+                            <TableHead>Monto Total</TableHead>
+                            <TableHead>Fecha de Pago</TableHead>
+                            <TableHead>Observaciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pagosPaginados.length > 0 ? (
+                            pagosPaginados.map((pago: any) => {
+                              const socio = personas.find(
+                                (p) => Number(p.id) === Number(pago.socioId),
                               );
-                              return deporte?.nombre || "Deporte desconocido";
-                            })
-                            .join(", ");
-                          const conceptosPago = [
-                            deportesNombres,
-                            cuotasSocialesDePago.length > 0
-                              ? "Cuota social independiente"
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(", ");
-                          const totalSocialIndependiente =
-                            cuotasSocialesDePago.reduce(
-                              (total, cuota) => total + (cuota.monto || 0),
-                              0,
-                            );
-                          const isExpanded = expandedPagos.has(String(pago.id));
-                          const desglosePorDeporte =
-                            cuotasDeportivasDePago.reduce(
-                              (acc, cuota) => {
-                                const deporteId = Number(cuota.deporteId);
-                                if (!acc[deporteId]) {
+                              const cuotasDePago = cuotas.filter(
+                                (c) => Number(c.pagoId) === Number(pago.id),
+                              );
+                              const cuotasDeportivasDePago =
+                                cuotasDePago.filter((c) => !c.esSocial);
+                              const cuotasSocialesDePago = cuotasDePago.filter(
+                                (c) => c.esSocial,
+                              );
+                              const deportesNombres = cuotasDeportivasDePago
+                                .map((c) => {
                                   const deporte = deportes.find(
-                                    (d) => Number(d.id) === deporteId,
+                                    (d) => Number(d.id) === Number(c.deporteId),
                                   );
-                                  acc[deporteId] = {
-                                    nombre:
-                                      deporte?.nombre || "Deporte desconocido",
-                                    entrenador: 0,
-                                    seguro: 0,
-                                    social: 0,
-                                  };
-                                }
-                                acc[deporteId].entrenador +=
-                                  cuota.cuotaEntrenador || 0;
-                                acc[deporteId].seguro += cuota.cuotaSeguro || 0;
-                                acc[deporteId].social += cuota.cuotaSocial || 0;
-                                return acc;
-                              },
-                              {} as Record<
-                                number,
-                                {
-                                  nombre: string;
-                                  entrenador: number;
-                                  seguro: number;
-                                  social: number;
-                                }
-                              >,
-                            );
-                          const desgloseArray =
-                            Object.values(desglosePorDeporte);
-                          const hasConceptos =
-                            totalSocialIndependiente > 0 ||
-                            desgloseArray.some(
-                              (d) => d.entrenador || d.seguro || d.social,
-                            );
+                                  return (
+                                    deporte?.nombre || "Deporte desconocido"
+                                  );
+                                })
+                                .join(", ");
+                              const conceptosPago = [
+                                deportesNombres,
+                                cuotasSocialesDePago.length > 0
+                                  ? "Cuota social independiente"
+                                  : "",
+                              ]
+                                .filter(Boolean)
+                                .join(", ");
+                              const totalSocialIndependiente =
+                                cuotasSocialesDePago.reduce(
+                                  (total, cuota) => total + (cuota.monto || 0),
+                                  0,
+                                );
+                              const isExpanded = expandedPagos.has(
+                                String(pago.id),
+                              );
+                              const desglosePorDeporte =
+                                cuotasDeportivasDePago.reduce(
+                                  (acc, cuota) => {
+                                    const deporteId = Number(cuota.deporteId);
+                                    if (!acc[deporteId]) {
+                                      const deporte = deportes.find(
+                                        (d) => Number(d.id) === deporteId,
+                                      );
+                                      acc[deporteId] = {
+                                        nombre:
+                                          deporte?.nombre ||
+                                          "Deporte desconocido",
+                                        entrenador: 0,
+                                        seguro: 0,
+                                        social: 0,
+                                      };
+                                    }
+                                    acc[deporteId].entrenador +=
+                                      cuota.cuotaEntrenador || 0;
+                                    acc[deporteId].seguro +=
+                                      cuota.cuotaSeguro || 0;
+                                    acc[deporteId].social +=
+                                      cuota.cuotaSocial || 0;
+                                    return acc;
+                                  },
+                                  {} as Record<
+                                    number,
+                                    {
+                                      nombre: string;
+                                      entrenador: number;
+                                      seguro: number;
+                                      social: number;
+                                    }
+                                  >,
+                                );
+                              const desgloseArray =
+                                Object.values(desglosePorDeporte);
+                              const hasConceptos =
+                                totalSocialIndependiente > 0 ||
+                                desgloseArray.some(
+                                  (d) => d.entrenador || d.seguro || d.social,
+                                );
 
-                          return (
-                            <>
-                              <TableRow
-                                key={pago.id}
-                                className="cursor-pointer hover:bg-gray-50"
-                                onClick={() =>
-                                  togglePagoExpanded(String(pago.id))
-                                }
-                              >
-                                <TableCell>
-                                  {hasConceptos ? (
-                                    isExpanded ? (
-                                      <ChevronDown className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronRight className="w-4 h-4" />
-                                    )
-                                  ) : null}
-                                </TableCell>
-                                <TableCell>
-                                  {socio
-                                    ? `${socio.nombre} ${socio.apellido}`
-                                    : "—"}
-                                </TableCell>
-                                <TableCell>{socio?.dni || "—"}</TableCell>
-                                <TableCell>{conceptosPago || "—"}</TableCell>
-                                <TableCell>
-                                  ${(pago.montoTotal || 0).toLocaleString()}
-                                </TableCell>
-                                <TableCell>
-                                  {formatearFechaDisplay(pago.fechaPago)}
-                                </TableCell>
-                                <TableCell>
-                                  {pago.observaciones || "—"}
-                                </TableCell>
-                              </TableRow>
-                              {isExpanded && hasConceptos && (
-                                <TableRow
-                                  key={`${pago.id}-desglose`}
-                                  className="bg-gray-50"
-                                >
-                                  <TableCell colSpan={7} className="py-3 px-6">
-                                    <div className="space-y-2">
-                                      <p className="text-sm font-semibold text-gray-700">
-                                        Desglose de conceptos:
-                                      </p>
-                                      <div className="space-y-3">
-                                        {desgloseArray.map((d, idx) => (
-                                          <div
-                                            key={`${pago.id}-dep-${idx}`}
-                                            className="rounded border bg-white p-3"
-                                          >
-                                            <div className="font-medium text-gray-700 mb-2">
-                                              {d.nombre}
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                              {d.entrenador > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">
-                                                    Entrenador:
-                                                  </span>
-                                                  <span className="font-semibold">
-                                                    $
-                                                    {d.entrenador.toLocaleString()}
-                                                  </span>
+                              return (
+                                <>
+                                  <TableRow
+                                    key={pago.id}
+                                    className="cursor-pointer hover:bg-gray-50"
+                                    onClick={() =>
+                                      togglePagoExpanded(String(pago.id))
+                                    }
+                                  >
+                                    <TableCell>
+                                      {hasConceptos ? (
+                                        isExpanded ? (
+                                          <ChevronDown className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronRight className="w-4 h-4" />
+                                        )
+                                      ) : null}
+                                    </TableCell>
+                                    <TableCell>
+                                      {socio
+                                        ? `${socio.nombre} ${socio.apellido}`
+                                        : "—"}
+                                    </TableCell>
+                                    <TableCell>{socio?.dni || "—"}</TableCell>
+                                    <TableCell>
+                                      {conceptosPago || "—"}
+                                    </TableCell>
+                                    <TableCell>
+                                      ${(pago.montoTotal || 0).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      {formatearFechaDisplay(pago.fechaPago)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {pago.observaciones || "—"}
+                                    </TableCell>
+                                  </TableRow>
+                                  {isExpanded && hasConceptos && (
+                                    <TableRow
+                                      key={`${pago.id}-desglose`}
+                                      className="bg-gray-50"
+                                    >
+                                      <TableCell
+                                        colSpan={7}
+                                        className="py-3 px-6"
+                                      >
+                                        <div className="space-y-2">
+                                          <p className="text-sm font-semibold text-gray-700">
+                                            Desglose de conceptos:
+                                          </p>
+                                          <div className="space-y-3">
+                                            {desgloseArray.map((d, idx) => (
+                                              <div
+                                                key={`${pago.id}-dep-${idx}`}
+                                                className="rounded border bg-white p-3"
+                                              >
+                                                <div className="font-medium text-gray-700 mb-2">
+                                                  {d.nombre}
                                                 </div>
-                                              )}
-                                              {d.seguro > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-gray-600">
-                                                    Seguro:
-                                                  </span>
-                                                  <span className="font-semibold">
-                                                    ${d.seguro.toLocaleString()}
-                                                  </span>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                                  {d.entrenador > 0 && (
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-gray-600">
+                                                        Entrenador:
+                                                      </span>
+                                                      <span className="font-semibold">
+                                                        $
+                                                        {d.entrenador.toLocaleString()}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  {d.seguro > 0 && (
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-gray-600">
+                                                        Seguro:
+                                                      </span>
+                                                      <span className="font-semibold">
+                                                        $
+                                                        {d.seguro.toLocaleString()}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  {d.social > 0 && (
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-gray-600">
+                                                        Social:
+                                                      </span>
+                                                      <span className="font-semibold">
+                                                        $
+                                                        {d.social.toLocaleString()}
+                                                      </span>
+                                                    </div>
+                                                  )}
                                                 </div>
-                                              )}
-                                              {d.social > 0 && (
-                                                <div className="flex items-center gap-2">
+                                              </div>
+                                            ))}
+                                            {totalSocialIndependiente > 0 && (
+                                              <div className="rounded border bg-white p-3">
+                                                <div className="font-medium text-gray-700 mb-2">
+                                                  Cuota Social Independiente
+                                                </div>
+                                                <div className="text-sm flex items-center gap-2">
                                                   <span className="text-gray-600">
                                                     Social:
                                                   </span>
                                                   <span className="font-semibold">
-                                                    ${d.social.toLocaleString()}
+                                                    $
+                                                    {totalSocialIndependiente.toLocaleString()}
                                                   </span>
                                                 </div>
-                                              )}
-                                            </div>
+                                              </div>
+                                            )}
                                           </div>
-                                        ))}
-                                        {totalSocialIndependiente > 0 && (
-                                          <div className="rounded border bg-white p-3">
-                                            <div className="font-medium text-gray-700 mb-2">
-                                              Cuota Social Independiente
-                                            </div>
-                                            <div className="text-sm flex items-center gap-2">
-                                              <span className="text-gray-600">
-                                                Social:
-                                              </span>
-                                              <span className="font-semibold">
-                                                $
-                                                {totalSocialIndependiente.toLocaleString()}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      {pago.montoTotal !==
-                                        pago.cuotaEntrenador +
-                                          pago.cuotaSeguro +
-                                          pago.cuotaSocial && (
-                                        <p className="text-xs text-gray-500 mt-2">
-                                          * El monto total puede diferir de la
-                                          suma por promociones aplicadas
-                                        </p>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              )}
-                            </>
-                          );
-                        })
-                      ) : (
-                        <TableRow>
-                          <TableCell
-                            colSpan={7}
-                            className="text-center py-20 text-gray-500"
-                          >
-                            No se encontraron pagos registrados para el criterio
-                            seleccionado.
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })()}
-                  </TableBody>
-                </Table>
-              </div>
+                                          {pago.montoTotal !==
+                                            pago.cuotaEntrenador +
+                                              pago.cuotaSeguro +
+                                              pago.cuotaSocial && (
+                                            <p className="text-xs text-gray-500 mt-2">
+                                              * El monto total puede diferir de
+                                              la suma por promociones aplicadas
+                                            </p>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </>
+                              );
+                            })
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center py-20 text-gray-500"
+                              >
+                                No se encontraron pagos registrados para el
+                                criterio seleccionado.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                      <p className="text-sm text-gray-600">
+                        Mostrando{" "}
+                        <span className="font-medium">
+                          {totalItems === 0 ? 0 : indiceInicio + 1}
+                        </span>{" "}
+                        a{" "}
+                        <span className="font-medium">
+                          {Math.min(
+                            indiceInicio + ITEMS_POR_PAGINA_PAGOS,
+                            totalItems,
+                          )}
+                        </span>{" "}
+                        de <span className="font-medium">{totalItems}</span>{" "}
+                        pagos
+                      </p>
+                      {totalPaginas > 1 && (
+                        <Pagination className="mx-0 w-auto justify-end">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura > 1) {
+                                    setPaginaActualPagos(paginaSegura - 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura <= 1
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                            {generarNumerosPagina(
+                              paginaSegura,
+                              totalPaginas,
+                            ).map((numPag, idx) => (
+                              <PaginationItem key={`pagos-pag-${idx}`}>
+                                {numPag === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={numPag === paginaSegura}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPaginaActualPagos(Number(numPag));
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    {numPag}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura < totalPaginas) {
+                                    setPaginaActualPagos(paginaSegura + 1);
+                                  }
+                                }}
+                                className={
+                                  paginaSegura >= totalPaginas
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </TabsContent>
 
             <TabsContent value="ingresosPorSocio">
