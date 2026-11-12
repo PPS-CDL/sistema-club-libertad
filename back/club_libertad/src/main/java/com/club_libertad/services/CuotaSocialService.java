@@ -150,7 +150,7 @@ public class CuotaSocialService {
     }
 
     private boolean esGrupoFamiliarValido(GrupoFamiliar grupo) {
-        if (grupo == null) return false;
+        if (grupo == null || !Boolean.TRUE.equals(grupo.getActivo())) return false;
         Persona responsable = grupo.getResponsable();
         if (responsable == null || !Boolean.TRUE.equals(responsable.getActivo())
                 || (responsable.getCategoria() != CategoriaPersona.SOCIO

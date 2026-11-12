@@ -359,6 +359,24 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
   const totalCuota =
     (formData.cuotaEntrenador ?? 0) + (formData.cuotaSeguro ?? 0);
 
+  const normalizarDeporteNombre = (valor: string = "") =>
+    valor
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  const deportesOrdenados = useMemo(
+    () =>
+      [...deportes].sort((a, b) =>
+        normalizarDeporteNombre(a.nombre).localeCompare(
+          normalizarDeporteNombre(b.nombre),
+          "es",
+          { sensitivity: "base" },
+        ),
+      ),
+    [deportes],
+  );
+
   const hoy = new Date();
   const inicioPeriodoActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
   const mostrarPrecioDeportivoSeparado =
@@ -895,7 +913,7 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
                           maxHeight: deportes.length > 4 ? 220 : undefined,
                         }}
                       >
-                        {deportes.map((deporte) => (
+                        {deportesOrdenados.map((deporte) => (
                           <div
                             key={deporte.id}
                             className="flex items-center space-x-3 p-3 hover:bg-gray-50"
@@ -1107,7 +1125,7 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          {!Array.isArray(deportes) || deportes.length === 0 ? (
+          {!Array.isArray(deportesOrdenados) || deportesOrdenados.length === 0 ? (
             <p className="text-center text-gray-500 py-4">
               No hay deportes registrados
             </p>
@@ -1124,8 +1142,8 @@ export function DeportesModule({ userRole }: DeportesModuleProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Array.isArray(deportes)
-                    ? deportes.map((deporte) => (
+                  {Array.isArray(deportesOrdenados)
+                    ? deportesOrdenados.map((deporte) => (
                         <FragmentKey key={deporte.id}>
                           <TableRow
                             onClick={() =>

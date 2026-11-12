@@ -44,10 +44,20 @@ import {
   ArrowUpDown,
   SquareArrowDown,
   SquareArrowRight,
+  ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Checkbox } from "./ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
 import {
   Pagination,
   PaginationContent,
@@ -163,6 +173,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategoria, setFilterCategoria] = useState<string>("all");
   const [filterDeporte, setFilterDeporte] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSocio, setEditingSocio] = useState<Socio | null>(null);
   const [selectedPromocionId, setSelectedPromocionId] = useState<Number | null>(
@@ -238,6 +250,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [editingGrupo, setEditingGrupo] = useState<GrupoFamiliar | null>(null);
   const [selectedResponsable, setSelectedResponsable] = useState<string>("");
   const [selectedIntegrantes, setSelectedIntegrantes] = useState<string[]>([]);
+  const [responsableGrupoOpen, setResponsableGrupoOpen] = useState(false);
+  const [busquedaResponsableGrupo, setBusquedaResponsableGrupo] =
+    useState("");
   const [expandedGrupoId, setExpandedGrupoId] = useState<string | null>(null);
   // Array de días, meses y años para el selector de fecha de nacimiento
   const days = Array.from({ length: 31 }, (_, i) =>
@@ -532,8 +547,53 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       return (
         matchesActive && matchesSearch && matchesCategoria && matchesDeporte
       );
-    })
-    .sort((a, b) => Number(b.id) - Number(a.id));
+    });
+
+  const sortedSocios = useMemo(() => {
+    const copia = [...filteredSocios];
+    const collator = new Intl.Collator("es", {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    copia.sort((a, b) => {
+      const apellidoCompare = collator.compare(
+        `${a.apellido || ""}`.trim(),
+        `${b.apellido || ""}`.trim(),
+      );
+
+      if (apellidoCompare !== 0) {
+        return apellidoCompare;
+      }
+
+      return collator.compare(
+        `${a.nombre || ""}`.trim(),
+        `${b.nombre || ""}`.trim(),
+      );
+    });
+
+    return copia;
+  }, [filteredSocios]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedSocios.length / pageSize));
+  useEffect(() => {
+    setCurrentPage((prev) => {
+      if (sortedSocios.length === 0) {
+        return 1;
+      }
+      const safePage = Math.min(prev, totalPages);
+      return safePage > 0 ? safePage : 1;
+    });
+  }, [sortedSocios.length, totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterCategoria, filterDeporte, activeFilter]);
+
+  const paginatedSocios = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedSocios.slice(startIndex, startIndex + pageSize);
+  }, [sortedSocios, currentPage]);
 
   // Reseteo automático de página al cambiar filtros o tamaño de página
   useEffect(() => {
@@ -829,6 +889,35 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     return labels[categoria] || categoria;
   };
 
+  const getCategoriaBadgeStyle = (categoria: string) => {
+    switch (categoria) {
+      case "SOCIO":
+        return {
+          backgroundColor: "#dbeafe",
+          borderColor: "#93c5fd",
+          color: "#1d4ed8",
+        };
+      case "SOCIOYJUGADOR":
+        return {
+          backgroundColor: "#ffedd5",
+          borderColor: "#fdba74",
+          color: "#c2410c",
+        };
+      case "JUGADOR":
+        return {
+          backgroundColor: "#fef3c7",
+          borderColor: "#fcd34d",
+          color: "#a16207",
+        };
+      default:
+        return {
+          backgroundColor: "#e2e8f0",
+          borderColor: "#cbd5e1",
+          color: "#334155",
+        };
+    }
+  };
+
   const getCategoriaFrontendValue = (
     categoria: string,
   ): "socio" | "jugador" | "socio y jugador" => {
@@ -958,6 +1047,22 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     }
   };
 
+  const handleToggleGrupoEstado = async (grupo: GrupoFamiliar) => {
+    const grupoActivo = grupo.activo !== false;
+    const nuevoEstado = !grupoActivo;
+    try {
+      await grupoFamiliarService.setEstado(grupo.id, nuevoEstado);
+      toast.success(
+        nuevoEstado ? "Grupo familiar reactivado" : "Grupo familiar dado de baja",
+      );
+      await cargarGruposFamiliares();
+      const res = await personaService.getAll();
+      setSocios(mapPersonasToSocios(res.data));
+    } catch (error: any) {
+      toast.error(error.response?.data || "Error al cambiar el estado del grupo");
+    }
+  };
+
   // Filtrar personas disponibles para el grupo (activas y sin grupo o del grupo actual)
   const personasDisponiblesParaGrupo = socios.filter(
     (s) =>
@@ -971,8 +1076,55 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     s.categoria.includes("SOCIO"),
   );
 
-  if (loading) return <div>Cargando socios...</div>;
-  if (error) return <div>Error: {error}</div>;
+  const responsablesDisponiblesOrdenados = useMemo(() => {
+    const collator = new Intl.Collator("es", {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    return [...responsablesDisponibles].sort((a, b) => {
+      const apellidoCompare = collator.compare(
+        `${a.apellido || ""}`.trim(),
+        `${b.apellido || ""}`.trim(),
+      );
+
+      if (apellidoCompare !== 0) return apellidoCompare;
+
+      return collator.compare(
+        `${a.nombre || ""}`.trim(),
+        `${b.nombre || ""}`.trim(),
+      );
+    });
+  }, [responsablesDisponibles]);
+
+  const responsableSeleccionado = useMemo(
+    () =>
+      responsablesDisponiblesOrdenados.find(
+        (s) => String(s.id) === String(selectedResponsable),
+      ) || null,
+    [responsablesDisponiblesOrdenados, selectedResponsable],
+  );
+
+  const responsablesFiltrados = useMemo(() => {
+    const query = busquedaResponsableGrupo.trim().toLowerCase();
+
+    if (!query) return responsablesDisponiblesOrdenados;
+
+    return responsablesDisponiblesOrdenados.filter((socio) => {
+      const nombreCompleto = `${socio.apellido || ""} ${socio.nombre || ""}`
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      const dni = `${socio.dni || ""}`.toLowerCase();
+      const queryNormalized = query
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+      return (
+        nombreCompleto.includes(queryNormalized) || dni.includes(queryNormalized)
+      );
+    });
+  }, [busquedaResponsableGrupo, responsablesDisponiblesOrdenados]);
 
   const toggleExpandSocio = async (socioId: string) => {
     if (expandedSocioId === socioId) {
@@ -997,6 +1149,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       }
     }
   };
+
+  const firstVisibleIndex = sortedSocios.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastVisibleIndex = Math.min(currentPage * pageSize, sortedSocios.length);
+
+  if (loading) return <div>Cargando socios...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="space-y-6">
@@ -1704,7 +1862,6 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
             {/* Tab de Socios */}
             <TabsContent value="socios" className="space-y-4">
-              {/* Filters */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="relative sm:col-span-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -1758,208 +1915,248 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                 </Select>
               </div>
 
-              {/* Table */}
-              <div className="border rounded-lg overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Apellido y Nombre</TableHead>
-                      <TableHead>DNI</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead>Edad</TableHead>
-                      <TableHead>Contacto</TableHead>
-                      <TableHead>Fecha de Registro</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredSocios.length === 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto w-full [scrollbar-gutter:stable]">
+                  <Table className="min-w-[1200px] w-full">
+                    <TableHeader>
                       <TableRow>
-                        <TableCell
-                          colSpan={8}
-                          className="text-center text-gray-500 py-8"
-                        >
-                          No se encontraron socios
-                        </TableCell>
+                        <TableHead className="min-w-[220px] max-w-[260px]">
+                          Apellido y Nombre
+                        </TableHead>
+                        <TableHead className="min-w-[150px]">DNI</TableHead>
+                        <TableHead className="min-w-[160px]">Categoría</TableHead>
+                        <TableHead className="min-w-[120px]">Edad</TableHead>
+                        <TableHead className="min-w-[220px] max-w-[260px]">
+                          Contacto
+                        </TableHead>
+                        <TableHead className="min-w-[180px]">
+                          Fecha de Registro
+                        </TableHead>
+                        <TableHead className="text-right min-w-[160px]">
+                          Acciones
+                        </TableHead>
                       </TableRow>
-                    ) : (
-                      filteredSocios.map((socio) => (
-                        <Fragment key={socio.id}>
-                          <TableRow
-                            onClick={() => toggleExpandSocio(socio.id)}
-                            className="cursor-pointer hover:bg-muted/50"
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedSocios.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="text-center text-gray-500 py-8"
                           >
-                            <TableCell>
-                              <div>
-                                <div>
-                                  {socio.apellido}, {socio.nombre}
-                                </div>
-                                {socio.responsablePago && (
-                                  <div className="text-sm text-gray-400">
-                                    Responsable: {socio.responsablePago}
+                            No se encontraron socios
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedSocios.map((socio) => (
+                          <Fragment key={socio.id}>
+                            <TableRow
+                              onClick={() => toggleExpandSocio(socio.id)}
+                              className="cursor-pointer hover:bg-muted/50"
+                            >
+                              <TableCell className="max-w-[260px] align-top">
+                                <div className="max-w-[240px]">
+                                  <div className="truncate" title={`${socio.apellido}, ${socio.nombre}`}>
+                                    {socio.apellido}, {socio.nombre}
                                   </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div>{socio.dni}</div>
-                                {socio.responsablePago && (
-                                  <div className="text-sm text-gray-400">
-                                    DNI responsable:{" "}
-                                    {socio.responsableDni || "-"}
-                                  </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {getCategoriaLabel(socio.categoria)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {calcularEdad(socio?.fechaNacimiento) === 0
-                                ? "Sin edad"
-                                : `${calcularEdad(socio?.fechaNacimiento)} años`}
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                <div>{socio?.telefono || "Sin teléfono"}</div>
-                                <div className="text-gray-500">
-                                  {socio?.email || "Sin email"}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                {formatDate(socio.fechaRegistro)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleAltaBaja(socio.id)}
-                                >
-                                  <ArrowUpDown
-                                    color="#ea580c"
-                                    className="w-4 h-4"
-                                  />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenDialog(socio)}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                {userRole === "admin" && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDelete(socio.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4 text-red-600" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                          {expandedSocioId === socio.id && (
-                            <TableRow key={`expanded-${socio.id}`}>
-                              <TableCell colSpan={7} className="bg-gray-50 p-0">
-                                <div className="p-4">
-                                  {loadingCuotasId === socio.id ? (
-                                    <div className="text-sm text-gray-500">
-                                      Cargando cuotas...
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-3">
-                                      <div className="text-sm font-medium text-gray-700">
-                                        Deportes y estado de cuota
-                                      </div>
-                                      {!cuotasPorSocio[socio.id] ||
-                                      cuotasPorSocio[socio.id].length === 0 ? (
-                                        <div className="text-sm text-gray-500">
-                                          Sin cuotas asociadas
-                                        </div>
-                                      ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                          {cuotasPorSocio[socio.id].map(
-                                            (cuota) => {
-                                              const deporte = deportes.find(
-                                                (d) =>
-                                                  Number(d.id) ===
-                                                  cuota.deporteId,
-                                              );
-                                              const nombreDeporte =
-                                                deporte?.nombre ||
-                                                `Deporte ${cuota.deporteId}`;
-                                              const isPagada =
-                                                cuota.estado === "PAGADA";
-                                              const isPendiente =
-                                                cuota.estado === "GENERADA";
-                                              return (
-                                                <div
-                                                  key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
-                                                  className="flex items-center justify-between rounded-md border bg-white px-3 py-2"
-                                                >
-                                                  <div>
-                                                    <div className="font-medium">
-                                                      {nombreDeporte}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                      {cuota.periodo}
-                                                    </div>
-                                                  </div>
-                                                  <Badge
-                                                    variant="outline"
-                                                    style={
-                                                      isPagada
-                                                        ? {
-                                                            borderColor:
-                                                              "#16a34a",
-                                                            backgroundColor:
-                                                              "#dcfce7",
-                                                            color: "#15803d",
-                                                          }
-                                                        : {
-                                                            borderColor:
-                                                              "#dc2626",
-                                                            backgroundColor:
-                                                              "#fee2e2",
-                                                            color: "#b91c1c",
-                                                          }
-                                                    }
-                                                  >
-                                                    {isPagada
-                                                      ? "PAGADA"
-                                                      : isPendiente
-                                                        ? "PENDIENTE"
-                                                        : "VENCIDA"}
-                                                  </Badge>
-                                                </div>
-                                              );
-                                            },
-                                          )}
-                                        </div>
-                                      )}
+                                  {socio.responsablePago && (
+                                    <div className="text-sm text-gray-400 truncate" title={socio.responsablePago}>
+                                      Responsable: {socio.responsablePago.replace(/\s*\(DNI:.*?\)$/, "")}
                                     </div>
                                   )}
                                 </div>
                               </TableCell>
+                              <TableCell className="align-top">
+                                <div>
+                                  <div>{socio.dni}</div>
+                                  {socio.responsablePago && (
+                                    <div className="text-sm text-gray-400">
+                                      DNI responsable: {socio.responsableDni || "-"}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <Badge
+                                  variant="outline"
+                                  style={getCategoriaBadgeStyle(socio.categoria)}
+                                  className="font-semibold"
+                                >
+                                  {getCategoriaLabel(socio.categoria)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="align-top">
+                                {calcularEdad(socio?.fechaNacimiento) === 0
+                                  ? "Sin edad"
+                                  : `${calcularEdad(socio?.fechaNacimiento)} años`}
+                              </TableCell>
+                              <TableCell className="max-w-[260px] align-top">
+                                <div className="text-sm max-w-[220px]">
+                                  <div className="truncate" title={socio?.telefono || "Sin teléfono"}>
+                                    {socio?.telefono || "Sin teléfono"}
+                                  </div>
+                                  <div className="text-gray-500 truncate" title={socio?.email || "Sin email"}>
+                                    {socio?.email || "Sin email"}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <div className="text-sm">
+                                  {formatDate(socio.fechaRegistro)}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right align-top">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleAltaBaja(socio.id)}
+                                  >
+                                    <ArrowUpDown
+                                      color="#ea580c"
+                                      className="w-4 h-4"
+                                    />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenDialog(socio)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  {userRole === "admin" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDelete(socio.id)}
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-600" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
                             </TableRow>
-                          )}
-                        </Fragment>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                            {expandedSocioId === socio.id && (
+                              <TableRow key={`expanded-${socio.id}`}>
+                                <TableCell colSpan={7} className="bg-gray-50 p-0">
+                                  <div className="p-4">
+                                    {loadingCuotasId === socio.id ? (
+                                      <div className="text-sm text-gray-500">
+                                        Cargando cuotas...
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-3">
+                                        <div className="text-sm font-medium text-gray-700">
+                                          Deportes y estado de cuota
+                                        </div>
+                                        {!cuotasPorSocio[socio.id] ||
+                                        cuotasPorSocio[socio.id].length === 0 ? (
+                                          <div className="text-sm text-gray-500">
+                                            Sin cuotas asociadas
+                                          </div>
+                                        ) : (
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {cuotasPorSocio[socio.id].map(
+                                              (cuota) => {
+                                                const deporte = deportes.find(
+                                                  (d) =>
+                                                    Number(d.id) ===
+                                                    cuota.deporteId,
+                                                );
+                                                const nombreDeporte =
+                                                  deporte?.nombre ||
+                                                  `Deporte ${cuota.deporteId}`;
+                                                const isPagada =
+                                                  cuota.estado === "PAGADA";
+                                                const isPendiente =
+                                                  cuota.estado === "GENERADA";
+                                                return (
+                                                  <div
+                                                    key={`${socio.id}-${cuota.deporteId}-${cuota.periodo}`}
+                                                    className="flex items-center justify-between rounded-md border bg-white px-3 py-2"
+                                                  >
+                                                    <div>
+                                                      <div className="font-medium">
+                                                        {nombreDeporte}
+                                                      </div>
+                                                      <div className="text-xs text-gray-500">
+                                                        {cuota.periodo}
+                                                      </div>
+                                                    </div>
+                                                    <Badge
+                                                      variant="outline"
+                                                      style={
+                                                        isPagada
+                                                          ? {
+                                                              borderColor: "#16a34a",
+                                                              backgroundColor: "#dcfce7",
+                                                              color: "#15803d",
+                                                            }
+                                                          : {
+                                                              borderColor: "#dc2626",
+                                                              backgroundColor: "#fee2e2",
+                                                              color: "#b91c1c",
+                                                            }
+                                                      }
+                                                    >
+                                                      {isPagada
+                                                        ? "PAGADA"
+                                                        : isPendiente
+                                                          ? "PENDIENTE"
+                                                          : "VENCIDA"}
+                                                    </Badge>
+                                                  </div>
+                                                );
+                                              },
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
               </div>
 
-              <div className="text-sm text-gray-500">
-                Mostrando {filteredSocios.length} de {socios.length} socios
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-gray-500">
+                <div>
+                  Mostrando {sortedSocios.length === 0 ? 0 : firstVisibleIndex} - {lastVisibleIndex} de {sortedSocios.length} socios
+                </div>
+                <Pagination className="mx-0 justify-end">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        aria-label="Página anterior"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(prev - 1, 1))
+                        }
+                        className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                      />
+                    </PaginationItem>
+                    <PaginationItem>
+                      <div className="px-3 py-2 text-sm text-gray-700">
+                        Página {currentPage} de {totalPages}
+                      </div>
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationNext
+                        aria-label="Página siguiente"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                        }
+                        className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             </TabsContent>
 
@@ -2535,22 +2732,70 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                     <div className="space-y-4 py-4">
                       <div className="space-y-2">
                         <Label>Responsable del Grupo *</Label>
-                        <Select
-                          value={selectedResponsable}
-                          onValueChange={setSelectedResponsable}
+                        <Popover
+                          open={responsableGrupoOpen}
+                          onOpenChange={(open) => {
+                            setResponsableGrupoOpen(open);
+                            if (!open) {
+                              setBusquedaResponsableGrupo("");
+                            }
+                          }}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccione un socio responsable" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {responsablesDisponibles.map((s) => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                {s.apellido}, {s.nombre} (DNI: {s.dni}) -{" "}
-                                {getCategoriaLabel(s.categoria)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={responsableGrupoOpen}
+                              className="w-full justify-between font-normal"
+                            >
+                              <span className="truncate text-left">
+                                {responsableSeleccionado
+                                  ? `${responsableSeleccionado.apellido}, ${responsableSeleccionado.nombre}`
+                                  : "Seleccione un socio responsable"}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-[var(--radix-popover-trigger-width)] p-0"
+                            align="start"
+                          >
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar responsable..."
+                                aria-label="Buscar responsable"
+                                value={busquedaResponsableGrupo}
+                                onValueChange={setBusquedaResponsableGrupo}
+                              />
+                              <CommandList>
+                                <CommandEmpty>
+                                  No se encontraron socios.
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {responsablesFiltrados.map((s) => (
+                                    <CommandItem
+                                      key={s.id}
+                                      value={String(s.id)}
+                                      onSelect={() => {
+                                        setSelectedResponsable(String(s.id));
+                                        setResponsableGrupoOpen(false);
+                                        setBusquedaResponsableGrupo("");
+                                      }}
+                                    >
+                                      <span className="truncate">
+                                        {s.apellido}, {s.nombre}
+                                      </span>
+                                      <span className="ml-2 text-xs text-gray-500">
+                                        DNI: {s.dni}
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
 
                       <div className="space-y-2">
@@ -2626,21 +2871,39 @@ export function SociosModule({ userRole }: SociosModuleProps) {
               </div>
 
               {/* Lista de Grupos */}
-              <div className="space-y-4">
-                {gruposFamiliares.length === 0 ? (
-                  <div className="text-center text-gray-500 py-8 border rounded-lg bg-gray-50">
-                    No hay grupos familiares registrados.
-                  </div>
-                ) : (
-                  gruposFamiliares.map((grupo) => {
-                    const totalIntegrantes =
-                      (grupo.integrantes?.length || 0) +
-                      (grupo.responsable &&
-                      !grupo.integrantes?.some((i) => i.id === grupo.responsable?.id)
-                        ? 1
-                        : 0);
-                    return (
-                      <Card key={grupo.id} className="overflow-hidden">
+              <div className="space-y-8">
+                {[
+                  {
+                    titulo: "Grupos activos",
+                    grupos: gruposFamiliares.filter((grupo) => grupo.activo !== false),
+                    mensajeVacio: "No hay grupos activos",
+                  },
+                  {
+                    titulo: "Grupos inactivos",
+                    grupos: gruposFamiliares.filter((grupo) => grupo.activo === false),
+                    mensajeVacio: "No hay grupos inactivos",
+                  },
+                ].map((seccion) => (
+                  <section key={seccion.titulo} className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-800">
+                      {seccion.titulo}
+                    </h3>
+                    {seccion.grupos.length === 0 ? (
+                      <div className="text-center text-gray-500 py-8 border rounded-lg bg-gray-50">
+                        {seccion.mensajeVacio}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {seccion.grupos.map((grupo) => {
+                          const totalIntegrantes =
+                            (grupo.integrantes?.length || 0) +
+                            (grupo.responsable &&
+                            !grupo.integrantes?.some((i) => i.id === grupo.responsable?.id)
+                              ? 1
+                              : 0);
+                          const grupoActivo = grupo.activo !== false;
+                          return (
+                            <Card key={grupo.id} className="overflow-hidden">
                         <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
                           <div>
                             <h3 className="font-bold text-lg text-gray-800">
@@ -2654,6 +2917,16 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             </p>
                           </div>
                           <div className="flex items-center gap-4">
+                            <Badge
+                              variant={grupoActivo ? "default" : "secondary"}
+                              className={
+                                grupoActivo
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-slate-200 text-slate-700"
+                              }
+                            >
+                              {grupoActivo ? "Activo" : "Inactivo"}
+                            </Badge>
                             <Badge variant="secondary">
                               {totalIntegrantes} integrantes
                             </Badge>
@@ -2685,6 +2958,15 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               >
                                 <Edit className="w-4 h-4 mr-2" /> Editar Grupo
                               </Button>
+                              {userRole === "admin" && (
+                                <Button
+                                  variant={grupoActivo ? "secondary" : "default"}
+                                  size="sm"
+                                  onClick={() => handleToggleGrupoEstado(grupo)}
+                                >
+                                  {grupoActivo ? "Dar de baja" : "Reactivar"}
+                                </Button>
+                              )}
                               {userRole === "admin" && (
                                 <Button
                                   variant="destructive"
@@ -2724,9 +3006,17 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                       {grupo.responsable.dni}
                                     </TableCell>
                                     <TableCell>
-                                      {getCategoriaLabel(
-                                        grupo.responsable.categoria,
-                                      )}
+                                      <Badge
+                                        variant="outline"
+                                        style={getCategoriaBadgeStyle(
+                                          grupo.responsable.categoria,
+                                        )}
+                                        className="font-semibold"
+                                      >
+                                        {getCategoriaLabel(
+                                          grupo.responsable.categoria,
+                                        )}
+                                      </Badge>
                                     </TableCell>
                                   </TableRow>
                                 )}
@@ -2747,9 +3037,17 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                       </TableCell>
                                       <TableCell>{integrante.dni}</TableCell>
                                       <TableCell>
-                                        {getCategoriaLabel(
-                                          integrante.categoria,
-                                        )}
+                                        <Badge
+                                          variant="outline"
+                                          style={getCategoriaBadgeStyle(
+                                            integrante.categoria,
+                                          )}
+                                          className="font-semibold"
+                                        >
+                                          {getCategoriaLabel(
+                                            integrante.categoria,
+                                          )}
+                                        </Badge>
                                       </TableCell>
                                     </TableRow>
                                   ))}
@@ -2757,10 +3055,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             </Table>
                           </div>
                         )}
-                      </Card>
-                    );
-                  })
-                )}
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                ))}
               </div>
             </TabsContent>
           </Tabs>
