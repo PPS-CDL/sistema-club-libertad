@@ -32,13 +32,6 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "./ui/pagination";
 import { Badge } from "./ui/badge";
 import {
   Edit,
@@ -46,6 +39,8 @@ import {
   Search,
   UserPlus,
   History,
+  ArrowUp,
+  ArrowDown,
   ArrowUpDown,
   SquareArrowDown,
   SquareArrowRight,
@@ -63,6 +58,15 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 
 import personaService from "../services/personaService";
 import deporteService from "../services/deporteService";
@@ -119,11 +123,43 @@ const calcularEdad = (fechaNacimiento: string | null): number => {
   return edad;
 };
 
+type HistorialSortField = "nombreCompleto" | "fechaRegistro" | "fechaBaja";
+type AsambleaSortField = "apellido" | "categoria" | "morosidad";
+type SortDirection = "asc" | "desc";
+
+interface HistorialSortConfig {
+  field: HistorialSortField;
+  direction: SortDirection;
+}
+
+interface AsambleaSortConfig {
+  field: AsambleaSortField;
+  direction: SortDirection;
+}
+
+const generarNumerosPagina = (actual: number, total: number) => {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (actual <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis", total];
+  }
+  if (actual >= total - 3) {
+    return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, "ellipsis", actual - 1, actual, actual + 1, "ellipsis", total];
+};
+
 export function SociosModule({ userRole }: SociosModuleProps) {
   const [socios, setSocios] = useState<Socio[]>([]);
   const [padronAsamblea, setPadronAsamblea] = useState<PersonaAsambleaDTO[]>(
     [],
   );
+  const [asambleaSortConfig, setAsambleaSortConfig] =
+    useState<AsambleaSortConfig>({
+      field: "apellido",
+      direction: "asc",
+    });
   const [expandedSocioId, setExpandedSocioId] = useState<string | null>(null);
   const [cuotasPorSocio, setCuotasPorSocio] = useState<Record<string, Cuota[]>>(
     {},
@@ -164,6 +200,13 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [socioToAltaBaja, setSocioToAltaBaja] = useState<Socio | null>(null);
   const [isAltaBajaDialogOpen, setIsAltaBajaDialogOpen] = useState(false);
   const [historialSearchTerm, setHistorialSearchTerm] = useState("");
+  const [historialSortConfig, setHistorialSortConfig] =
+    useState<HistorialSortConfig>({
+      field: "fechaRegistro",
+      direction: "desc",
+    });
+  const [historialCurrentPage, setHistorialCurrentPage] = useState<number>(1);
+  const [historialItemsPerPage, setHistorialItemsPerPage] = useState<number>(20);
   const [historialFilter, setHistorialFilter] = useState<
     "todos" | "activos" | "inactivos"
   >("todos");
@@ -274,8 +317,69 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     }
   };
 
+  const padronAsambleaOrdenado = useMemo(() => {
+    return [...padronAsamblea].sort((a, b) => {
+      // 1 & 2. Apellido y Nombre (A-Z / Z-A)
+      if (asambleaSortConfig.field === "apellido") {
+        const nameA = `${a.apellido} ${a.nombre}`;
+        const nameB = `${b.apellido} ${b.nombre}`;
+        const cmp = nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+        return asambleaSortConfig.direction === "asc" ? cmp : -cmp;
+      }
+
+      // 3. Categoría (asc / desc)
+      if (asambleaSortConfig.field === "categoria") {
+        const catA = a.categoria || "";
+        const catB = b.categoria || "";
+        const cmp = catA.localeCompare(catB, "es", { sensitivity: "base" });
+        if (cmp !== 0) {
+          return asambleaSortConfig.direction === "asc" ? cmp : -cmp;
+        }
+        // Desempate por apellido A-Z
+        return `${a.apellido} ${a.nombre}`.localeCompare(
+          `${b.apellido} ${b.nombre}`,
+          "es",
+          { sensitivity: "base" },
+        );
+      }
+
+      // 4. Morosidad (Lógica estricta de sub-grupos)
+      if (asambleaSortConfig.field === "morosidad") {
+        const cuotasA = a.cuotasAdeudadas ?? 0;
+        const cuotasB = b.cuotasAdeudadas ?? 0;
+        const alDiaA = cuotasA === 0;
+        const alDiaB = cuotasB === 0;
+
+        if (asambleaSortConfig.direction === "asc") {
+          // Clic 1: Primero "Al día" (0 cuotas), luego deudores de mayor a menor (3 -> 2 -> 1)
+          if (alDiaA && !alDiaB) return -1;
+          if (!alDiaA && alDiaB) return 1;
+          if (!alDiaA && !alDiaB) {
+            if (cuotasB !== cuotasA) return cuotasB - cuotasA;
+          }
+        } else {
+          // Clic 2: Primero deudores de mayor a menor (3 -> 2 -> 1), luego "Al día"
+          if (!alDiaA && alDiaB) return -1;
+          if (alDiaA && !alDiaB) return 1;
+          if (!alDiaA && !alDiaB) {
+            if (cuotasB !== cuotasA) return cuotasB - cuotasA;
+          }
+        }
+
+        // Desempate por apellido A-Z si tienen las mismas cuotas
+        return `${a.apellido} ${a.nombre}`.localeCompare(
+          `${b.apellido} ${b.nombre}`,
+          "es",
+          { sensitivity: "base" },
+        );
+      }
+
+      return 0;
+    });
+  }, [padronAsamblea, asambleaSortConfig]);
+
   const exportarAsambleaCSV = () => {
-    if (!padronAsamblea.length) return;
+    if (!padronAsambleaOrdenado.length) return;
 
     const headers = [
       "Apellido y Nombre",
@@ -284,7 +388,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
       "Edad",
       "Morosidad",
     ];
-    const rows = padronAsamblea.map((persona) => {
+    const rows = padronAsambleaOrdenado.map((persona) => {
       const morosidad =
         persona.cuotasAdeudadas === 0
           ? "Al día"
@@ -491,24 +595,85 @@ export function SociosModule({ userRole }: SociosModuleProps) {
     return sortedSocios.slice(startIndex, startIndex + pageSize);
   }, [sortedSocios, currentPage]);
 
-  const filteredHistorial = historialRegistros
-    .filter((registro) => {
-      const nombreCompleto =
-        `${registro.apellido} ${registro.nombre}`.toLowerCase();
-      return (
-        nombreCompleto.includes(historialSearchTerm.toLowerCase()) ||
-        registro.dni.includes(historialSearchTerm)
-      );
-    })
-    .filter((registro) => {
-      if (historialFilter === "activos") {
-        return !registro.fechaBaja;
+  // Reseteo automático de página al cambiar filtros o tamaño de página
+  useEffect(() => {
+    setHistorialCurrentPage(1);
+  }, [historialSearchTerm, historialFilter, historialItemsPerPage]);
+
+  const sortedAndFilteredHistorial = useMemo(() => {
+    const result = historialRegistros
+      .filter((registro) => {
+        const nombreCompleto =
+          `${registro.apellido} ${registro.nombre}`.toLowerCase();
+        const term = historialSearchTerm.toLowerCase();
+        return (
+          nombreCompleto.includes(term) ||
+          registro.dni.includes(historialSearchTerm)
+        );
+      })
+      .filter((registro) => {
+        if (historialFilter === "activos") {
+          return !registro.fechaBaja;
+        }
+        if (historialFilter === "inactivos") {
+          return !!registro.fechaBaja;
+        }
+        return true;
+      });
+
+    return result.sort((a, b) => {
+      if (historialSortConfig.field === "nombreCompleto") {
+        const nameA = `${a.apellido} ${a.nombre}`;
+        const nameB = `${b.apellido} ${b.nombre}`;
+        const cmp = nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+        return historialSortConfig.direction === "asc" ? cmp : -cmp;
       }
-      if (historialFilter === "inactivos") {
-        return !!registro.fechaBaja;
+
+      if (historialSortConfig.field === "fechaRegistro") {
+        const timeA = new Date(a.fechaRegistro).getTime() || 0;
+        const timeB = new Date(b.fechaRegistro).getTime() || 0;
+        return historialSortConfig.direction === "asc"
+          ? timeA - timeB
+          : timeB - timeA;
       }
-      return true;
+
+      if (historialSortConfig.field === "fechaBaja") {
+        if (!a.fechaBaja && !b.fechaBaja) return 0;
+        if (!a.fechaBaja) return 1;
+        if (!b.fechaBaja) return -1;
+        const timeA = new Date(a.fechaBaja).getTime() || 0;
+        const timeB = new Date(b.fechaBaja).getTime() || 0;
+        return historialSortConfig.direction === "asc"
+          ? timeA - timeB
+          : timeB - timeA;
+      }
+
+      return 0;
     });
+  }, [
+    historialRegistros,
+    historialSearchTerm,
+    historialFilter,
+    historialSortConfig,
+  ]);
+
+  const totalHistorialItems = sortedAndFilteredHistorial.length;
+  const totalHistorialPages = Math.max(
+    1,
+    Math.ceil(totalHistorialItems / historialItemsPerPage),
+  );
+  const safeHistorialPage = Math.min(
+    historialCurrentPage,
+    totalHistorialPages,
+  );
+
+  const paginatedHistorial = useMemo(() => {
+    const startIndex = (safeHistorialPage - 1) * historialItemsPerPage;
+    return sortedAndFilteredHistorial.slice(
+      startIndex,
+      startIndex + historialItemsPerPage,
+    );
+  }, [sortedAndFilteredHistorial, safeHistorialPage, historialItemsPerPage]);
 
   // Abrir diálogo para crear/editar
   const handleOpenDialog = (socio?: Socio) => {
@@ -1997,18 +2162,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
             {/* Tab de Asamblea */}
             {(() => {
-              const padronOrdenado = [...padronAsamblea].sort((a, b) =>
-                `${a.apellido} ${a.nombre}`.localeCompare(
-                  `${b.apellido} ${b.nombre}`,
-                  "es",
-                  {
-                    sensitivity: "base",
-                  },
-                ),
-              );
-
-              const total = padronOrdenado.length;
-              const alDia = padronOrdenado.filter(
+              const total = padronAsambleaOrdenado.length;
+              const alDia = padronAsambleaOrdenado.filter(
                 (persona) => persona.cuotasAdeudadas === 0,
               ).length;
               const conDeuda = total - alDia;
@@ -2037,7 +2192,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 font-medium">
                         Total
                       </p>
                       <p className="text-2xl font-bold text-slate-800">
@@ -2045,20 +2200,20 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       </p>
                     </div>
 
-                    <div className="rounded-lg border bg-green-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-green-700">
+                    <div className="rounded-lg border bg-green-50/50 border-green-200 p-3">
+                      <p className="text-xs uppercase tracking-wide text-green-700 font-medium">
                         Al día
                       </p>
-                      <p className="text-2xl font-bold text-green-700">
+                      <p className="text-2xl font-bold text-green-600">
                         {alDia}
                       </p>
                     </div>
 
-                    <div className="rounded-lg border bg-orange-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-orange-700">
+                    <div className="rounded-lg border bg-red-50/50 border-red-200 p-3">
+                      <p className="text-xs uppercase tracking-wide text-red-700 font-medium">
                         Con deuda
                       </p>
-                      <p className="text-2xl font-bold text-orange-700">
+                      <p className="text-2xl font-bold text-red-600">
                         {conDeuda}
                       </p>
                     </div>
@@ -2069,25 +2224,97 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       <TableHeader className="bg-slate-100">
                         <TableRow>
                           <TableHead className="font-semibold text-slate-700">
-                            Apellido y Nombre
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "apellido",
+                                  direction:
+                                    prev.field === "apellido" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Apellido y Nombre
+                              {asambleaSortConfig.field === "apellido" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
                             DNI
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
-                            Categoría
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "categoria",
+                                  direction:
+                                    prev.field === "categoria" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Categoría
+                              {asambleaSortConfig.field === "categoria" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
                             Edad
                           </TableHead>
                           <TableHead className="font-semibold text-slate-700">
-                            Morosidad
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAsambleaSortConfig((prev) => ({
+                                  field: "morosidad",
+                                  direction:
+                                    prev.field === "morosidad" &&
+                                    prev.direction === "asc"
+                                      ? "desc"
+                                      : "asc",
+                                }));
+                              }}
+                              className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                            >
+                              Morosidad
+                              {asambleaSortConfig.field === "morosidad" ? (
+                                asambleaSortConfig.direction === "asc" ? (
+                                  <ArrowUp className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <ArrowDown className="w-4 h-4 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
 
                       <TableBody>
-                        {padronOrdenado.length === 0 ? (
+                        {padronAsambleaOrdenado.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={5} className="py-10">
                               <div className="flex flex-col items-center justify-center text-center text-slate-500">
@@ -2103,7 +2330,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          padronOrdenado.map((persona, index) => (
+                          padronAsambleaOrdenado.map((persona, index) => (
                             <TableRow
                               key={persona.id}
                               className={
@@ -2194,15 +2421,93 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
-                      <TableHead>Número</TableHead>
-                      <TableHead>Nombre Completo</TableHead>
+                      <TableHead className="w-16">#</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "nombreCompleto",
+                              direction:
+                                prev.field === "nombreCompleto" &&
+                                prev.direction === "asc"
+                                  ? "desc"
+                                  : "asc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Nombre Completo
+                          {historialSortConfig.field === "nombreCompleto" ? (
+                            historialSortConfig.direction === "asc" ? (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead>DNI</TableHead>
-                      <TableHead>Fecha de Registro</TableHead>
-                      <TableHead>Fecha de Baja</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "fechaRegistro",
+                              direction:
+                                prev.field === "fechaRegistro" &&
+                                prev.direction === "desc"
+                                  ? "asc"
+                                  : "desc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Fecha de Registro
+                          {historialSortConfig.field === "fechaRegistro" ? (
+                            historialSortConfig.direction === "desc" ? (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistorialSortConfig((prev) => ({
+                              field: "fechaBaja",
+                              direction:
+                                prev.field === "fechaBaja" &&
+                                prev.direction === "desc"
+                                  ? "asc"
+                                  : "desc",
+                            }));
+                          }}
+                          className="flex items-center gap-1 font-semibold hover:text-blue-600 transition-colors"
+                        >
+                          Fecha de Baja
+                          {historialSortConfig.field === "fechaBaja" ? (
+                            historialSortConfig.direction === "desc" ? (
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredHistorial.length === 0 ? (
+                    {paginatedHistorial.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={6}
@@ -2212,7 +2517,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredHistorial.map((registro, index) => (
+                      paginatedHistorial.map((registro, index) => (
                         <Fragment key={`registro-${registro.id}`}>
                           <TableRow>
                             <TableCell className="text-center">
@@ -2235,7 +2540,12 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                 </button>
                               )}
                             </TableCell>
-                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                              {(safeHistorialPage - 1) *
+                                historialItemsPerPage +
+                                index +
+                                1}
+                            </TableCell>
                             <TableCell>
                               {registro.apellido}, {registro.nombre}
                             </TableCell>
@@ -2276,9 +2586,114 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                 </Table>
               </div>
 
-              <div className="text-sm text-gray-500">
-                Mostrando {filteredHistorial.length} de{" "}
-                {historialRegistros.length} registros históricos
+              {/* Controles de paginación e información */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                  <span>
+                    Mostrando{" "}
+                    <strong>
+                      {totalHistorialItems === 0
+                        ? 0
+                        : (safeHistorialPage - 1) * historialItemsPerPage + 1}
+                    </strong>{" "}
+                    a{" "}
+                    <strong>
+                      {Math.min(
+                        safeHistorialPage * historialItemsPerPage,
+                        totalHistorialItems,
+                      )}
+                    </strong>{" "}
+                    de <strong>{totalHistorialItems}</strong> registros
+                    {totalHistorialItems !== historialRegistros.length && (
+                      <span className="text-gray-400 ml-1">
+                        (de {historialRegistros.length} históricos)
+                      </span>
+                    )}
+                  </span>
+
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="text-xs text-gray-500">Filas por pág:</span>
+                    <Select
+                      value={String(historialItemsPerPage)}
+                      onValueChange={(val) =>
+                        setHistorialItemsPerPage(Number(val))
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[70px]">
+                        <SelectValue placeholder="20" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {totalHistorialPages > 1 && (
+                  <Pagination className="mx-0 w-auto justify-end">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (safeHistorialPage > 1) {
+                              setHistorialCurrentPage(safeHistorialPage - 1);
+                            }
+                          }}
+                          className={
+                            safeHistorialPage <= 1
+                              ? "pointer-events-none opacity-50"
+                              : "cursor-pointer"
+                          }
+                        />
+                      </PaginationItem>
+
+                      {generarNumerosPagina(
+                        safeHistorialPage,
+                        totalHistorialPages,
+                      ).map((numPag, idx) => (
+                        <PaginationItem key={`hist-page-${idx}`}>
+                          {numPag === "ellipsis" ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              href="#"
+                              isActive={numPag === safeHistorialPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setHistorialCurrentPage(Number(numPag));
+                              }}
+                              className="cursor-pointer"
+                            >
+                              {numPag}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (safeHistorialPage < totalHistorialPages) {
+                              setHistorialCurrentPage(safeHistorialPage + 1);
+                            }
+                          }}
+                          className={
+                            safeHistorialPage >= totalHistorialPages
+                              ? "pointer-events-none opacity-50"
+                              : "cursor-pointer"
+                          }
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                )}
               </div>
             </TabsContent>
             {/* Tab de Grupos Familiares */}
