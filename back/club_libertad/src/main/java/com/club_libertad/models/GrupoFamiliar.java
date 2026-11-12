@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +28,16 @@ public class GrupoFamiliar {
     private Long id;
 
     private String nombre;
+
+    @Column(name = "activo", nullable = false)
+    private Boolean activo = true;
+
+    @Column(name = "fecha_ultimo_cambio_estado")
+    private LocalDate fechaUltimoCambioEstado;
+
+    public Boolean getActivo() {
+        return activo == null ? true : activo;
+    }
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "responsable_id")

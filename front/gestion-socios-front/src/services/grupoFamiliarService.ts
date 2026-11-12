@@ -8,6 +8,10 @@ const grupoFamiliarService = {
   update: (id: string | number, data: GrupoFamiliarDTO) =>
     api.put<GrupoFamiliar>(`/grupos/${id}`, data),
   delete: (id: string | number) => api.delete(`/grupos/${id}`),
+  setEstado: (id: string | number, activo: boolean) =>
+    api.patch<GrupoFamiliar>(`/grupos/${id}/estado`, null, { params: { activo } }),
+  desactivar: (id: string | number) => api.patch<GrupoFamiliar>(`/grupos/${id}/desactivar`),
+  reactivar: (id: string | number) => api.patch<GrupoFamiliar>(`/grupos/${id}/reactivar`),
 };
 
 export default grupoFamiliarService;

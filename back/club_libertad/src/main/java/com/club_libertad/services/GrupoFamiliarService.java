@@ -7,6 +7,7 @@ import com.club_libertad.repositories.PersonaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -66,6 +67,8 @@ public class GrupoFamiliarService {
 
         GrupoFamiliar grupo = new GrupoFamiliar();
         grupo.setNombre("Grupo familiar " + responsable.getApellido() );
+        grupo.setActivo(true);
+        grupo.setFechaUltimoCambioEstado(LocalDate.now());
         grupo.setResponsable(responsable);
         
         GrupoFamiliar savedGrupo = grupoFamiliarRepository.save(grupo);
@@ -126,6 +129,12 @@ public class GrupoFamiliarService {
         });
 
         grupo.setNombre("Grupo familiar " + nuevoResponsable.getApellido() );
+        if (grupo.getActivo() == null) {
+            grupo.setActivo(true);
+        }
+        if (grupo.getFechaUltimoCambioEstado() == null) {
+            grupo.setFechaUltimoCambioEstado(LocalDate.now());
+        }
         grupo.setResponsable(nuevoResponsable);
         
         for (Persona p : todosLosMiembros) {
@@ -160,6 +169,22 @@ public class GrupoFamiliarService {
 
         grupoFamiliarRepository.delete(grupo);
         cuotaSocialService.sincronizarCuotasSocialesMesActual();
+    }
+
+    @Transactional
+    public GrupoFamiliar cambiarEstadoGrupo(Long id, boolean activo) {
+        GrupoFamiliar grupo = grupoFamiliarRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Grupo no encontrado."));
+
+        if (Boolean.TRUE.equals(grupo.getActivo()) == activo) {
+            return grupo;
+        }
+
+        grupo.setActivo(activo);
+        grupo.setFechaUltimoCambioEstado(LocalDate.now());
+        GrupoFamiliar actualizado = grupoFamiliarRepository.save(grupo);
+        cuotaSocialService.sincronizarCuotasSocialesMesActual();
+        return actualizado;
     }
 
     private void validarResponsable(Persona responsable, Long grupoIdActual) {
