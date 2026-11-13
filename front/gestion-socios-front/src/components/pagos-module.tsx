@@ -300,6 +300,16 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [resumenMensual, setResumenMensual] = useState<
     ResumenMensualPorDeporteDTO[]
   >([]);
+
+  // Lista de Resumen Mensual derivada y ordenada alfabéticamente de la A a la Z por Disciplina
+  const resumenMensualOrdenado = useMemo(() => {
+    return [...resumenMensual].sort((a, b) =>
+      (a.nombreDeporte || "").localeCompare(b.nombreDeporte || "", "es", {
+        sensitivity: "base",
+      }),
+    );
+  }, [resumenMensual]);
+
   const [cargandoResumenMensual, setCargandoResumenMensual] =
     useState<boolean>(false);
 
@@ -1050,17 +1060,17 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       ]),
     );
 
-    resumenMensual.forEach((item) => {
+    resumenMensualOrdenado.forEach((item) => {
       lineas.push(
         formatearFila([
           item.nombreDeporte,
           item.sociosAlDia,
           item.sociosDeudores,
-          `$${Number(item.cobradoSocial || 0).toLocaleString()}`,
-          `$${Number(item.cobradoEntrenador || 0).toLocaleString()}`,
-          `$${Number(item.cobradoSeguro || 0).toLocaleString()}`,
-          `$${Number(item.totalCobrado || 0).toLocaleString()}`,
-          `$${Number(item.totalAdeudado || 0).toLocaleString()}`,
+          Number(item.cobradoSocial || 0),
+          Number(item.cobradoEntrenador || 0),
+          Number(item.cobradoSeguro || 0),
+          Number(item.totalCobrado || 0),
+          Number(item.totalAdeudado || 0),
         ]),
       );
     });
@@ -1077,11 +1087,26 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           (acc, item) => acc + (Number(item.sociosDeudores) || 0),
           0,
         ),
-        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoSocial) || 0), 0).toLocaleString()}`,
-        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoEntrenador) || 0), 0).toLocaleString()}`,
-        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.cobradoSeguro) || 0), 0).toLocaleString()}`,
-        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.totalCobrado) || 0), 0).toLocaleString()}`,
-        `$${resumenMensual.reduce((acc, item) => acc + (Number(item.totalAdeudado) || 0), 0).toLocaleString()}`,
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.cobradoSocial) || 0),
+          0,
+        ),
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.cobradoEntrenador) || 0),
+          0,
+        ),
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.cobradoSeguro) || 0),
+          0,
+        ),
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.totalCobrado) || 0),
+          0,
+        ),
+        resumenMensual.reduce(
+          (acc, item) => acc + (Number(item.totalAdeudado) || 0),
+          0,
+        ),
       ]),
     );
 
@@ -3885,7 +3910,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {resumenMensual.map((item) => (
+                          {resumenMensualOrdenado.map((item) => (
                             <TableRow key={`resumen-dep-${item.deporteId}`}>
                               <TableCell className="font-semibold">
                                 {item.nombreDeporte}
@@ -3924,7 +3949,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                   item.cobradoSeguro || 0,
                                 ).toLocaleString()}
                               </TableCell>
-                              <TableCell className="text-right font-bold text-green-700">
+                              <TableCell className="text-right font-bold text-green-600">
                                 $
                                 {Number(
                                   item.totalCobrado || 0,
@@ -3949,21 +3974,31 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                             <TableCell className="font-semibold">
                               Total
                             </TableCell>
-                            <TableCell className="text-center">
-                              {resumenMensual.reduce(
-                                (acc, item) =>
-                                  acc + (Number(item.sociosAlDia) || 0),
-                                0,
-                              )}
+                            <TableCell className="text-center font-medium text-blue-700">
+                              <Badge
+                                variant="outline"
+                                className="bg-blue-50 text-blue-700 border-blue-200"
+                              >
+                                {resumenMensual.reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.sociosAlDia) || 0),
+                                  0,
+                                )}
+                              </Badge>
                             </TableCell>
-                            <TableCell className="text-center">
-                              {resumenMensual.reduce(
-                                (acc, item) =>
-                                  acc + (Number(item.sociosDeudores) || 0),
-                                0,
-                              )}
+                            <TableCell className="text-center font-medium text-amber-700">
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-50 text-amber-700 border-amber-200"
+                              >
+                                {resumenMensual.reduce(
+                                  (acc, item) =>
+                                    acc + (Number(item.sociosDeudores) || 0),
+                                  0,
+                                )}
+                              </Badge>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="font-bold text-green-600">
                               $
                               {resumenMensual
                                 .reduce(
@@ -3973,7 +4008,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                 )
                                 .toLocaleString()}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="font-bold text-green-600">
                               $
                               {resumenMensual
                                 .reduce(
@@ -3983,7 +4018,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                 )
                                 .toLocaleString()}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="font-bold text-green-600">
                               $
                               {resumenMensual
                                 .reduce(
@@ -3993,7 +4028,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                                 )
                                 .toLocaleString()}
                             </TableCell>
-                            <TableCell className="text-right font-extrabold text-green-700 text-base">
+                            <TableCell className="text-right font-extrabold text-green-600 text-base">
                               $
                               {resumenMensual
                                 .reduce(
