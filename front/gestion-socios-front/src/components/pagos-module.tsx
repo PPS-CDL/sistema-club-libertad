@@ -178,6 +178,9 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const ITEMS_POR_PAGINA_INGRESOS_SOCIO = 50;
   const [paginaActualPagos, setPaginaActualPagos] = useState<number>(1);
   const ITEMS_POR_PAGINA_PAGOS = 50;
+  const [paginaActualIngresosFecha, setPaginaActualIngresosFecha] =
+    useState<number>(1);
+  const ITEMS_POR_PAGINA_INGRESOS_FECHA = 100;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -284,6 +287,39 @@ export function PagosModule({ userRole }: PagosModuleProps) {
   const [resumenIngresos, setResumenIngresos] =
     useState<ResumenIngresos | null>(null);
   const [pagosFiltrados, setPagosFiltrados] = useState<any[]>([]);
+
+  // Lista de Ingresos por Deporte ordenada alfabéticamente de la A a la Z por Disciplina
+  const ingresosPorDeporteOrdenados = useMemo(() => {
+    return [...ingresosPorDeporte].sort((a, b) =>
+      (a.nombreDeporte || "").localeCompare(b.nombreDeporte || "", "es", {
+        sensitivity: "base",
+      }),
+    );
+  }, [ingresosPorDeporte]);
+
+  // Lista de Pagos por Fecha ordenada por Fecha de Pago descendente (más reciente primero)
+  const pagosFiltradosPorFechaOrdenados = useMemo(() => {
+    return [...pagosFiltrados].sort((a, b) => {
+      const fechaA = a.fechaPago ? new Date(a.fechaPago).getTime() : 0;
+      const fechaB = b.fechaPago ? new Date(b.fechaPago).getTime() : 0;
+
+      const validoA = !isNaN(fechaA) && fechaA > 0;
+      const validoB = !isNaN(fechaB) && fechaB > 0;
+
+      if (validoA && validoB) {
+        if (fechaB !== fechaA) {
+          return fechaB - fechaA;
+        }
+      } else if (validoA && !validoB) {
+        return -1;
+      } else if (!validoA && validoB) {
+        return 1;
+      }
+
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [pagosFiltrados]);
+
   const [cargandoReporte, setCargandoReporte] = useState<boolean>(false);
 
   const fechaActual = new Date();
@@ -970,15 +1006,15 @@ export function PagosModule({ userRole }: PagosModuleProps) {
       ]),
     );
 
-    ingresosPorDeporte.forEach((item) => {
+    ingresosPorDeporteOrdenados.forEach((item) => {
       lineas.push(
         formatearFila([
           item.nombreDeporte,
           item.cantidadCuotasCobradas,
-          `$${Number(item.totalSocial || 0).toLocaleString()}`,
-          `$${Number(item.totalEntrenador || 0).toLocaleString()}`,
-          `$${Number(item.totalSeguro || 0).toLocaleString()}`,
-          `$${Number(item.montoTotal || 0).toLocaleString()}`,
+          Number(item.totalSocial || 0),
+          Number(item.totalEntrenador || 0),
+          Number(item.totalSeguro || 0),
+          Number(item.montoTotal || 0),
         ]),
       );
     });
@@ -991,10 +1027,22 @@ export function PagosModule({ userRole }: PagosModuleProps) {
           (acc, item) => acc + (Number(item.cantidadCuotasCobradas) || 0),
           0,
         ),
-        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSocial) || 0), 0).toLocaleString()}`,
-        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalEntrenador) || 0), 0).toLocaleString()}`,
-        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.totalSeguro) || 0), 0).toLocaleString()}`,
-        `$${ingresosPorDeporte.reduce((acc, item) => acc + (Number(item.montoTotal) || 0), 0).toLocaleString()}`,
+        ingresosPorDeporte.reduce(
+          (acc, item) => acc + (Number(item.totalSocial) || 0),
+          0,
+        ),
+        ingresosPorDeporte.reduce(
+          (acc, item) => acc + (Number(item.totalEntrenador) || 0),
+          0,
+        ),
+        ingresosPorDeporte.reduce(
+          (acc, item) => acc + (Number(item.totalSeguro) || 0),
+          0,
+        ),
+        ingresosPorDeporte.reduce(
+          (acc, item) => acc + (Number(item.montoTotal) || 0),
+          0,
+        ),
       ]),
     );
 
@@ -1437,6 +1485,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
   const consultarIngresosPorFecha = useCallback(async () => {
     setCargandoReporte(true);
+    setPaginaActualIngresosFecha(1);
     const params: FiltroFechaParams = {};
     if (modoFiltroFecha === "dia") {
       if (!fechaFiltro) {
@@ -1989,6 +2038,7 @@ export function PagosModule({ userRole }: PagosModuleProps) {
               if (val === "vencidos") setPaginaActualVencidas(1);
               if (val === "pagos") setPaginaActualPagos(1);
               if (val === "ingresosPorSocio") setPaginaActualIngresosSocio(1);
+              if (val === "ingresos-fecha") setPaginaActualIngresosFecha(1);
             }}
           >
             <TabsList className="flex flex-wrap">
@@ -3347,385 +3397,527 @@ export function PagosModule({ userRole }: PagosModuleProps) {
 
             {/* Listado y Reporte por Fecha o Rango */}
             <TabsContent value="ingresos-fecha" className="space-y-4">
-              <div className="rounded-lg border bg-card p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-base">
-                      Consulta de Ingresos por Fecha o Período
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      Consulta cuánto dinero ingresó por disciplina en un día
-                      puntual o rango temporal.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        modoFiltroFecha === "dia" ? "default" : "outline"
-                      }
-                      onClick={() => setModoFiltroFecha("dia")}
-                    >
-                      Día puntual
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        modoFiltroFecha === "rango" ? "default" : "outline"
-                      }
-                      onClick={() => setModoFiltroFecha("rango")}
-                    >
-                      Período / Rango
-                    </Button>
-                  </div>
-                </div>
+              {(() => {
+                const totalItems = pagosFiltradosPorFechaOrdenados.length;
+                const totalPaginas = Math.max(
+                  1,
+                  Math.ceil(totalItems / ITEMS_POR_PAGINA_INGRESOS_FECHA),
+                );
+                const paginaSegura = Math.min(
+                  Math.max(1, paginaActualIngresosFecha),
+                  totalPaginas,
+                );
+                const indiceInicio =
+                  (paginaSegura - 1) * ITEMS_POR_PAGINA_INGRESOS_FECHA;
+                const pagosFechaPaginados =
+                  pagosFiltradosPorFechaOrdenados.slice(
+                    indiceInicio,
+                    indiceInicio + ITEMS_POR_PAGINA_INGRESOS_FECHA,
+                  );
 
-                <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
-                  <div className="flex flex-wrap items-end gap-3">
-                    {modoFiltroFecha === "dia" ? (
-                      <div className="space-y-1.5 w-44 min-w-[175px] shrink-0">
-                        <Label htmlFor="filtro-fecha-dia">
-                          Fecha del ingreso
-                        </Label>
-                        <Input
-                          id="filtro-fecha-dia"
-                          type="date"
-                          value={fechaFiltro}
-                          onChange={(e) => setFechaFiltro(e.target.value)}
-                          className="w-full"
-                        />
+                return (
+                  <>
+                    <div className="rounded-lg border bg-card p-4 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-base">
+                            Consulta de Ingresos por Fecha o Período
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Consulta cuánto dinero ingresó por disciplina en un
+                            día puntual o rango temporal.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={
+                              modoFiltroFecha === "dia" ? "default" : "outline"
+                            }
+                            onClick={() => setModoFiltroFecha("dia")}
+                          >
+                            Día puntual
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={
+                              modoFiltroFecha === "rango"
+                                ? "default"
+                                : "outline"
+                            }
+                            onClick={() => setModoFiltroFecha("rango")}
+                          >
+                            Período / Rango
+                          </Button>
+                        </div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
-                          <Label htmlFor="filtro-fecha-desde">
-                            Fecha Desde
-                          </Label>
-                          <Input
-                            id="filtro-fecha-desde"
-                            type="date"
-                            value={fechaDesdeFiltro}
-                            onChange={(e) =>
-                              setFechaDesdeFiltro(e.target.value)
-                            }
-                            className="w-full"
-                          />
+
+                      <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
+                        <div className="flex flex-wrap items-end gap-3">
+                          {modoFiltroFecha === "dia" ? (
+                            <div className="space-y-1.5 w-44 min-w-[175px] shrink-0">
+                              <Label htmlFor="filtro-fecha-dia">
+                                Fecha del ingreso
+                              </Label>
+                              <Input
+                                id="filtro-fecha-dia"
+                                type="date"
+                                value={fechaFiltro}
+                                onChange={(e) => setFechaFiltro(e.target.value)}
+                                className="w-full"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
+                                <Label htmlFor="filtro-fecha-desde">
+                                  Fecha Desde
+                                </Label>
+                                <Input
+                                  id="filtro-fecha-desde"
+                                  type="date"
+                                  value={fechaDesdeFiltro}
+                                  onChange={(e) =>
+                                    setFechaDesdeFiltro(e.target.value)
+                                  }
+                                  className="w-full"
+                                />
+                              </div>
+                              <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
+                                <Label htmlFor="filtro-fecha-hasta">
+                                  Fecha Hasta
+                                </Label>
+                                <Input
+                                  id="filtro-fecha-hasta"
+                                  type="date"
+                                  value={fechaHastaFiltro}
+                                  onChange={(e) =>
+                                    setFechaHastaFiltro(e.target.value)
+                                  }
+                                  className="w-full"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          <div className="space-y-1.5 min-w-[220px] w-fit shrink-0">
+                            <Label htmlFor="filtro-deporte-ingreso">
+                              Disciplina / Deporte
+                            </Label>
+                            <Popover
+                              open={deporteIngresoAbierto}
+                              onOpenChange={cambiarAperturaDeporteIngreso}
+                            >
+                              <PopoverTrigger asChild>
+                                <Button
+                                  id="filtro-deporte-ingreso"
+                                  type="button"
+                                  variant="outline"
+                                  aria-label={`Disciplina / Deporte: ${nombreDeporteIngreso}`}
+                                  className="w-full min-w-[220px] justify-between gap-2 font-normal"
+                                >
+                                  <span>{nombreDeporteIngreso}</span>
+                                  <ChevronsUpDown
+                                    className="h-4 w-4 shrink-0 opacity-50"
+                                    aria-hidden="true"
+                                  />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-[var(--radix-popover-trigger-width)] p-0"
+                                align="start"
+                              >
+                                <Command shouldFilter={false}>
+                                  <CommandInput
+                                    placeholder="Buscar deporte..."
+                                    aria-label="Buscar disciplina o deporte"
+                                    value={busquedaDeporteIngreso}
+                                    onValueChange={setBusquedaDeporteIngreso}
+                                  />
+                                  <CommandList>
+                                    <CommandEmpty>
+                                      No se encontraron deportes.
+                                    </CommandEmpty>
+                                    <CommandGroup>
+                                      {opcionesDeporteIngresoFiltradas.map(
+                                        (opcion) => (
+                                          <CommandItem
+                                            key={opcion.value}
+                                            value={opcion.value}
+                                            onSelect={() => {
+                                              setFilterDeporteIngreso(
+                                                opcion.value,
+                                              );
+                                              cambiarAperturaDeporteIngreso(
+                                                false,
+                                              );
+                                            }}
+                                          >
+                                            {opcion.label}
+                                          </CommandItem>
+                                        ),
+                                      )}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
                         </div>
-                        <div className="space-y-1.5 w-36 min-w-[150px] shrink-0">
-                          <Label htmlFor="filtro-fecha-hasta">
-                            Fecha Hasta
-                          </Label>
-                          <Input
-                            id="filtro-fecha-hasta"
-                            type="date"
-                            value={fechaHastaFiltro}
-                            onChange={(e) =>
-                              setFechaHastaFiltro(e.target.value)
-                            }
-                            className="w-full"
-                          />
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            onClick={consultarIngresosPorFecha}
+                            disabled={cargandoReporte}
+                            className="gap-2"
+                          >
+                            <Search className="w-4 h-4" />
+                            {cargandoReporte
+                              ? "Consultando..."
+                              : "Buscar Ingresos"}
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              setModoFiltroFecha("dia");
+                              setFechaFiltro(getFechaHoy());
+                              setFechaDesdeFiltro("");
+                              setFechaHastaFiltro("");
+                              setFilterDeporteIngreso("all");
+                              cambiarAperturaDeporteIngreso(false);
+                              setResumenIngresos(null);
+                              setPagosFiltrados([]);
+                              setIngresosPorDeporte([]);
+                              setPaginaActualIngresosFecha(1);
+                            }}
+                          >
+                            Limpiar / Hoy
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            onClick={exportarCSVIngresosPorDeporte}
+                            className="gap-1.5"
+                          >
+                            <Download className="w-4 h-4" />
+                            Exportar CSV
+                          </Button>
                         </div>
-                      </>
+                      </div>
+                    </div>
+
+                    {/* Resumen discriminado por Disciplina */}
+                    {ingresosPorDeporte.length > 0 && (
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base font-semibold">
+                            Ingresos discriminados por Deporte
+                          </CardTitle>
+                          <CardDescription>
+                            Detalle del dinero recaudado por cada disciplina en
+                            el período seleccionado
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <div className="border-t overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Deporte / Disciplina</TableHead>
+                                  <TableHead className="text-center">
+                                    Cuotas Cobradas
+                                  </TableHead>
+                                  <TableHead>Social</TableHead>
+                                  <TableHead>Entrenador</TableHead>
+                                  <TableHead>Seguro</TableHead>
+                                  <TableHead className="text-right">
+                                    Total Ingresado
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {ingresosPorDeporteOrdenados.map((item) => (
+                                  <TableRow key={`dep-${item.deporteId}`}>
+                                    <TableCell className="font-semibold">
+                                      {item.nombreDeporte}
+                                    </TableCell>
+                                    <TableCell className="text-center font-normal text-blue-700">
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-blue-50 text-blue-700 border-blue-200 font-normal"
+                                      >
+                                        {item.cantidadCuotasCobradas}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      $
+                                      {Number(
+                                        item.totalSocial || 0,
+                                      ).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      $
+                                      {Number(
+                                        item.totalEntrenador || 0,
+                                      ).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      $
+                                      {Number(
+                                        item.totalSeguro || 0,
+                                      ).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-green-600">
+                                      $
+                                      {Number(
+                                        item.montoTotal || 0,
+                                      ).toLocaleString()}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                              <TableBody>
+                                <TableRow className="border-0 hover:bg-transparent pointer-events-none">
+                                  <TableCell
+                                    colSpan={6}
+                                    className="py-2.5 border-0"
+                                  >
+                                    &nbsp;
+                                  </TableCell>
+                                </TableRow>
+                                <TableRow className="border-t-2 bg-gray-50/80 font-bold">
+                                  <TableCell className="font-semibold">
+                                    Total
+                                  </TableCell>
+                                  <TableCell className="text-center font-normal text-blue-700">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-blue-50 text-blue-700 border-blue-200"
+                                    >
+                                      {ingresosPorDeporte.reduce(
+                                        (acc, item) =>
+                                          acc +
+                                          (Number(
+                                            item.cantidadCuotasCobradas,
+                                          ) || 0),
+                                        0,
+                                      )}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="font-bold text-green-600">
+                                    $
+                                    {ingresosPorDeporte
+                                      .reduce(
+                                        (acc, item) =>
+                                          acc + (Number(item.totalSocial) || 0),
+                                        0,
+                                      )
+                                      .toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="font-bold text-green-600">
+                                    $
+                                    {ingresosPorDeporte
+                                      .reduce(
+                                        (acc, item) =>
+                                          acc +
+                                          (Number(item.totalEntrenador) || 0),
+                                        0,
+                                      )
+                                      .toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="font-bold text-green-600">
+                                    $
+                                    {ingresosPorDeporte
+                                      .reduce(
+                                        (acc, item) =>
+                                          acc + (Number(item.totalSeguro) || 0),
+                                        0,
+                                      )
+                                      .toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="text-right font-extrabold text-green-600 text-base">
+                                    $
+                                    {ingresosPorDeporte
+                                      .reduce(
+                                        (acc, item) =>
+                                          acc + (Number(item.montoTotal) || 0),
+                                        0,
+                                      )
+                                      .toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </CardContent>
+                      </Card>
                     )}
 
-                    <div className="space-y-1.5 min-w-[220px] w-fit shrink-0">
-                      <Label htmlFor="filtro-deporte-ingreso">
-                        Disciplina / Deporte
-                      </Label>
-                      <Popover
-                        open={deporteIngresoAbierto}
-                        onOpenChange={cambiarAperturaDeporteIngreso}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            id="filtro-deporte-ingreso"
-                            type="button"
-                            variant="outline"
-                            aria-label={`Disciplina / Deporte: ${nombreDeporteIngreso}`}
-                            className="w-full min-w-[220px] justify-between gap-2 font-normal"
-                          >
-                            <span>{nombreDeporteIngreso}</span>
-                            <ChevronsUpDown
-                              className="h-4 w-4 shrink-0 opacity-50"
-                              aria-hidden="true"
-                            />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-[var(--radix-popover-trigger-width)] p-0"
-                          align="start"
-                        >
-                          <Command shouldFilter={false}>
-                            <CommandInput
-                              placeholder="Buscar deporte..."
-                              aria-label="Buscar disciplina o deporte"
-                              value={busquedaDeporteIngreso}
-                              onValueChange={setBusquedaDeporteIngreso}
-                            />
-                            <CommandList>
-                              <CommandEmpty>
-                                No se encontraron deportes.
-                              </CommandEmpty>
-                              <CommandGroup>
-                                {opcionesDeporteIngresoFiltradas.map(
-                                  (opcion) => (
-                                    <CommandItem
-                                      key={opcion.value}
-                                      value={opcion.value}
-                                      onSelect={() => {
-                                        setFilterDeporteIngreso(opcion.value);
-                                        cambiarAperturaDeporteIngreso(false);
-                                      }}
-                                    >
-                                      {opcion.label}
-                                    </CommandItem>
-                                  ),
-                                )}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      onClick={consultarIngresosPorFecha}
-                      disabled={cargandoReporte}
-                      className="gap-2"
-                    >
-                      <Search className="w-4 h-4" />
-                      {cargandoReporte ? "Consultando..." : "Buscar Ingresos"}
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setModoFiltroFecha("dia");
-                        setFechaFiltro(getFechaHoy());
-                        setFechaDesdeFiltro("");
-                        setFechaHastaFiltro("");
-                        setFilterDeporteIngreso("all");
-                        cambiarAperturaDeporteIngreso(false);
-                        setResumenIngresos(null);
-                        setPagosFiltrados([]);
-                        setIngresosPorDeporte([]);
-                      }}
-                    >
-                      Limpiar / Hoy
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      onClick={exportarCSVIngresosPorDeporte}
-                      className="gap-1.5"
-                    >
-                      <Download className="w-4 h-4" />
-                      Exportar CSV
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Resumen discriminado por Disciplina */}
-              {ingresosPorDeporte.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-semibold">
-                      Ingresos discriminados por Deporte
-                    </CardTitle>
-                    <CardDescription>
-                      Detalle del dinero recaudado por cada disciplina en el
-                      período seleccionado
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="border-t overflow-x-auto">
+                    <div className="border rounded-lg overflow-x-auto min-h-[520px]">
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Deporte / Disciplina</TableHead>
-                            <TableHead className="text-center">
-                              Cuotas Cobradas
-                            </TableHead>
-                            <TableHead>Social</TableHead>
-                            <TableHead>Entrenador</TableHead>
-                            <TableHead>Seguro</TableHead>
-                            <TableHead className="text-right">
-                              Total Ingresado
-                            </TableHead>
+                            <TableHead>Socio</TableHead>
+                            <TableHead>DNI</TableHead>
+                            <TableHead>Deportes</TableHead>
+                            <TableHead>Monto Total</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Fecha de Pago</TableHead>
+                            <TableHead>Observaciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {ingresosPorDeporte.map((item) => (
-                            <TableRow key={`dep-${item.deporteId}`}>
-                              <TableCell className="font-semibold">
-                                {item.nombreDeporte}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {item.cantidadCuotasCobradas}
-                              </TableCell>
-                              <TableCell>
-                                $
-                                {Number(item.totalSocial || 0).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                $
-                                {Number(
-                                  item.totalEntrenador || 0,
-                                ).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                $
-                                {Number(item.totalSeguro || 0).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right font-bold text-green-700">
-                                ${Number(item.montoTotal || 0).toLocaleString()}
+                          {pagosFechaPaginados.length > 0 ? (
+                            pagosFechaPaginados.map((pago: any) => {
+                              const socio = personas.find(
+                                (p) => Number(p.id) === Number(pago.socioId),
+                              );
+                              const cuotasDePago = cuotas.filter(
+                                (c) => Number(c.pagoId) === Number(pago.id),
+                              );
+                              const deportesNombres =
+                                cuotasDePago
+                                  .map((c) => {
+                                    const deporte = deportes.find(
+                                      (d) =>
+                                        Number(d.id) === Number(c.deporteId),
+                                    );
+                                    return deporte?.nombre || "Deporte";
+                                  })
+                                  .filter(Boolean)
+                                  .join(", ") || "—";
+
+                              return (
+                                <TableRow key={`filtro-${pago.id}`}>
+                                  <TableCell className="font-medium">
+                                    {socio
+                                      ? `${socio.nombre} ${socio.apellido}`
+                                      : "—"}
+                                  </TableCell>
+                                  <TableCell>{socio?.dni || "—"}</TableCell>
+                                  <TableCell>{deportesNombres}</TableCell>
+                                  <TableCell className="font-semibold text-green-600">
+                                    ${(pago.montoTotal || 0).toLocaleString()}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">
+                                      {getMetodoPagoLabel(pago.metodoPago)}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {formatearFechaDisplay(pago.fechaPago)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {pago.observaciones || "—"}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center py-20 text-gray-500"
+                              >
+                                {cargandoReporte
+                                  ? "Buscando ingresos..."
+                                  : "No se encontraron ingresos registrados para el criterio seleccionado."}
                               </TableCell>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                        <TableBody>
-                          <TableRow className="border-0 hover:bg-transparent pointer-events-none">
-                            <TableCell colSpan={6} className="py-2.5 border-0">
-                              &nbsp;
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="border-t-2 bg-gray-50/80 font-bold">
-                            <TableCell className="font-semibold">
-                              Total
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {ingresosPorDeporte.reduce(
-                                (acc, item) =>
-                                  acc +
-                                  (Number(item.cantidadCuotasCobradas) || 0),
-                                0,
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              $
-                              {ingresosPorDeporte
-                                .reduce(
-                                  (acc, item) =>
-                                    acc + (Number(item.totalSocial) || 0),
-                                  0,
-                                )
-                                .toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              $
-                              {ingresosPorDeporte
-                                .reduce(
-                                  (acc, item) =>
-                                    acc + (Number(item.totalEntrenador) || 0),
-                                  0,
-                                )
-                                .toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              $
-                              {ingresosPorDeporte
-                                .reduce(
-                                  (acc, item) =>
-                                    acc + (Number(item.totalSeguro) || 0),
-                                  0,
-                                )
-                                .toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right font-extrabold text-green-700 text-base">
-                              $
-                              {ingresosPorDeporte
-                                .reduce(
-                                  (acc, item) =>
-                                    acc + (Number(item.montoTotal) || 0),
-                                  0,
-                                )
-                                .toLocaleString()}
-                            </TableCell>
-                          </TableRow>
+                          )}
                         </TableBody>
                       </Table>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
 
-              <div className="border rounded-lg overflow-x-auto min-h-[520px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Socio</TableHead>
-                      <TableHead>DNI</TableHead>
-                      <TableHead>Deportes</TableHead>
-                      <TableHead>Monto Total</TableHead>
-                      <TableHead>Método</TableHead>
-                      <TableHead>Fecha de Pago</TableHead>
-                      <TableHead>Observaciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagosFiltrados.length > 0 ? (
-                      pagosFiltrados.map((pago: any) => {
-                        const socio = personas.find(
-                          (p) => Number(p.id) === Number(pago.socioId),
-                        );
-                        const cuotasDePago = cuotas.filter(
-                          (c) => Number(c.pagoId) === Number(pago.id),
-                        );
-                        const deportesNombres =
-                          cuotasDePago
-                            .map((c) => {
-                              const deporte = deportes.find(
-                                (d) => Number(d.id) === Number(c.deporteId),
-                              );
-                              return deporte?.nombre || "Deporte";
-                            })
-                            .filter(Boolean)
-                            .join(", ") || "—";
-
-                        return (
-                          <TableRow key={`filtro-${pago.id}`}>
-                            <TableCell className="font-medium">
-                              {socio
-                                ? `${socio.nombre} ${socio.apellido}`
-                                : "—"}
-                            </TableCell>
-                            <TableCell>{socio?.dni || "—"}</TableCell>
-                            <TableCell>{deportesNombres}</TableCell>
-                            <TableCell className="font-semibold text-green-700">
-                              ${(pago.montoTotal || 0).toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {getMetodoPagoLabel(pago.metodoPago)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {formatearFechaDisplay(pago.fechaPago)}
-                            </TableCell>
-                            <TableCell>{pago.observaciones || "—"}</TableCell>
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={7}
-                          className="text-center py-20 text-gray-500"
-                        >
-                          {cargandoReporte
-                            ? "Buscando ingresos..."
-                            : "No se encontraron ingresos registrados para el criterio seleccionado."}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-1">
+                      <p className="text-sm text-gray-600">
+                        Mostrando{" "}
+                        <span className="font-medium">
+                          {totalItems === 0 ? 0 : indiceInicio + 1}
+                        </span>{" "}
+                        a{" "}
+                        <span className="font-medium">
+                          {Math.min(
+                            indiceInicio + ITEMS_POR_PAGINA_INGRESOS_FECHA,
+                            totalItems,
+                          )}
+                        </span>{" "}
+                        de <span className="font-medium">{totalItems}</span>{" "}
+                        ingresos
+                      </p>
+                      {totalPaginas > 1 && (
+                        <Pagination className="mx-0 w-auto justify-end">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura > 1) {
+                                    setPaginaActualIngresosFecha(
+                                      paginaSegura - 1,
+                                    );
+                                  }
+                                }}
+                                className={
+                                  paginaSegura <= 1
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                            {generarNumerosPagina(
+                              paginaSegura,
+                              totalPaginas,
+                            ).map((numPag, idx) => (
+                              <PaginationItem key={`ingresos-fecha-pag-${idx}`}>
+                                {numPag === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={numPag === paginaSegura}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPaginaActualIngresosFecha(
+                                        Number(numPag),
+                                      );
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    {numPag}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (paginaSegura < totalPaginas) {
+                                    setPaginaActualIngresosFecha(
+                                      paginaSegura + 1,
+                                    );
+                                  }
+                                }}
+                                className={
+                                  paginaSegura >= totalPaginas
+                                    ? "pointer-events-none opacity-50"
+                                    : "cursor-pointer"
+                                }
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </TabsContent>
 
             {/* Pestaña Resumen Mensual */}
@@ -3915,18 +4107,18 @@ export function PagosModule({ userRole }: PagosModuleProps) {
                               <TableCell className="font-semibold">
                                 {item.nombreDeporte}
                               </TableCell>
-                              <TableCell className="text-center font-medium text-blue-700">
+                              <TableCell className="text-center font-normal text-blue-700">
                                 <Badge
                                   variant="outline"
-                                  className="bg-blue-50 text-blue-700 border-blue-200"
+                                  className="bg-blue-50 text-blue-700 border-blue-200 font-normal"
                                 >
                                   {item.sociosAlDia}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-center font-medium text-amber-700">
+                              <TableCell className="text-center font-normal text-amber-700">
                                 <Badge
                                   variant="outline"
-                                  className="bg-amber-50 text-amber-700 border-amber-200"
+                                  className="bg-amber-50 text-amber-700 border-amber-200 font-normal"
                                 >
                                   {item.sociosDeudores}
                                 </Badge>
