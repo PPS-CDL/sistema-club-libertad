@@ -45,6 +45,7 @@ import {
   SquareArrowDown,
   SquareArrowRight,
   ChevronsUpDown,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -250,6 +251,9 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   const [editingGrupo, setEditingGrupo] = useState<GrupoFamiliar | null>(null);
   const [selectedResponsable, setSelectedResponsable] = useState<string>("");
   const [selectedIntegrantes, setSelectedIntegrantes] = useState<string[]>([]);
+  const [busquedaIntegrantesGrupo, setBusquedaIntegrantesGrupo] =
+    useState("");
+  const [paginaIntegrantes, setPaginaIntegrantes] = useState(1);
   const [responsableGrupoOpen, setResponsableGrupoOpen] = useState(false);
   const [busquedaResponsableGrupo, setBusquedaResponsableGrupo] =
     useState("");
@@ -969,6 +973,8 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   };
   // Lógica para manejar la creación y edición de grupos familiares
   const handleOpenGrupoDialog = (grupo?: GrupoFamiliar) => {
+    setBusquedaIntegrantesGrupo("");
+    setPaginaIntegrantes(1);
     if (grupo) {
       setEditingGrupo(grupo);
       setSelectedResponsable(
@@ -1064,12 +1070,95 @@ export function SociosModule({ userRole }: SociosModuleProps) {
   };
 
   // Filtrar personas disponibles para el grupo (activas y sin grupo o del grupo actual)
-  const personasDisponiblesParaGrupo = socios.filter(
-    (s) =>
-      s.activo === true &&
-      (s.grupoFamiliarId === null ||
-        s.grupoFamiliarId === undefined ||
-        (editingGrupo && s.grupoFamiliarId === Number(editingGrupo.id))),
+  const personasDisponiblesParaGrupo = useMemo(
+    () =>
+      socios.filter(
+        (s) =>
+          s.activo === true &&
+          (s.grupoFamiliarId === null ||
+            s.grupoFamiliarId === undefined ||
+            (editingGrupo &&
+              s.grupoFamiliarId === Number(editingGrupo.id))),
+      ),
+    [socios, editingGrupo],
+  );
+
+  const integrantesDisponiblesParaGrupo = useMemo(() => {
+    const collator = new Intl.Collator("es", {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    return personasDisponiblesParaGrupo
+      .filter((socio) => String(socio.id) !== selectedResponsable)
+      .sort((a, b) => {
+        const apellidoCompare = collator.compare(
+          `${a.apellido || ""}`.trim(),
+          `${b.apellido || ""}`.trim(),
+        );
+
+        if (apellidoCompare !== 0) return apellidoCompare;
+
+        return collator.compare(
+          `${a.nombre || ""}`.trim(),
+          `${b.nombre || ""}`.trim(),
+        );
+      });
+  }, [personasDisponiblesParaGrupo, selectedResponsable]);
+
+  const integrantesDisponiblesIds = useMemo(
+    () => new Set(integrantesDisponiblesParaGrupo.map((socio) => String(socio.id))),
+    [integrantesDisponiblesParaGrupo],
+  );
+
+  useEffect(() => {
+    setSelectedIntegrantes((integrantesActuales) => {
+      const integrantesValidos = integrantesActuales.filter(
+        (id, index) =>
+          id !== selectedResponsable &&
+          integrantesDisponiblesIds.has(id) &&
+          integrantesActuales.indexOf(id) === index,
+      );
+
+      return integrantesValidos.length === integrantesActuales.length
+        ? integrantesActuales
+        : integrantesValidos;
+    });
+  }, [integrantesDisponiblesIds, selectedResponsable]);
+
+  const integrantesSeleccionados = integrantesDisponiblesParaGrupo.filter(
+    (socio) => selectedIntegrantes.includes(String(socio.id)),
+  );
+
+  const integrantesFiltrados = useMemo(() => {
+    const normalizar = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const query = normalizar(busquedaIntegrantesGrupo.trim());
+
+    if (!query) return integrantesDisponiblesParaGrupo;
+
+    return integrantesDisponiblesParaGrupo.filter((socio) =>
+      normalizar(`${socio.apellido || ""} ${socio.nombre || ""}`).includes(
+        query,
+      ),
+    );
+  }, [busquedaIntegrantesGrupo, integrantesDisponiblesParaGrupo]);
+
+  const integrantesPorPagina = 10;
+  const totalPaginasIntegrantes = Math.max(
+    1,
+    Math.ceil(integrantesFiltrados.length / integrantesPorPagina),
+  );
+  const paginaIntegrantesActual = Math.min(
+    paginaIntegrantes,
+    totalPaginasIntegrantes,
+  );
+  const integrantesDeLaPagina = integrantesFiltrados.slice(
+    (paginaIntegrantesActual - 1) * integrantesPorPagina,
+    paginaIntegrantesActual * integrantesPorPagina,
   );
 
   const responsablesDisponibles = personasDisponiblesParaGrupo.filter((s) =>
@@ -2716,22 +2805,24 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                       Nuevo Grupo Familiar
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-xl">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingGrupo
-                          ? "Editar Grupo Familiar"
-                          : "Nuevo Grupo Familiar"}
-                      </DialogTitle>
-                      <DialogDescription>
-                        Seleccione el responsable y los integrantes. Todas las
-                        personas deben estar activas y no pertenecer a otro
-                        grupo.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
+                  <DialogContent className="flex h-[90dvh] max-h-[calc(100dvh-2rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
+                    <div className="shrink-0 space-y-4 border-b px-6 pb-4 pt-6">
+                      <DialogHeader>
+                        <DialogTitle>
+                          {editingGrupo
+                            ? "Editar Grupo Familiar"
+                            : "Nuevo Grupo Familiar"}
+                        </DialogTitle>
+                        <DialogDescription>
+                          Seleccione el responsable y los integrantes. Todas las
+                          personas deben estar activas y no pertenecer a otro
+                          grupo.
+                        </DialogDescription>
+                      </DialogHeader>
                       <div className="space-y-2">
-                        <Label>Responsable del Grupo *</Label>
+                        <Label htmlFor="responsable-grupo">
+                          Responsable del Grupo *
+                        </Label>
                         <Popover
                           open={responsableGrupoOpen}
                           onOpenChange={(open) => {
@@ -2746,6 +2837,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                               type="button"
                               variant="outline"
                               role="combobox"
+                              id="responsable-grupo"
                               aria-expanded={responsableGrupoOpen}
                               className="w-full justify-between font-normal"
                             >
@@ -2779,6 +2871,7 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                                       value={String(s.id)}
                                       onSelect={() => {
                                         setSelectedResponsable(String(s.id));
+                                        setPaginaIntegrantes(1);
                                         setResponsableGrupoOpen(false);
                                         setBusquedaResponsableGrupo("");
                                       }}
@@ -2797,65 +2890,145 @@ export function SociosModule({ userRole }: SociosModuleProps) {
                           </PopoverContent>
                         </Popover>
                       </div>
-
-                      <div className="space-y-2">
-                        <Label>Integrantes adicionales</Label>
-                        <div className="border rounded-md p-2 h-64 overflow-y-auto space-y-2">
-                          {personasDisponiblesParaGrupo
-                            .filter((s) => String(s.id) !== selectedResponsable)
-                            .map((socio) => (
-                              <div
-                                key={socio.id}
-                                className="flex items-center space-x-2"
-                              >
-                                <Checkbox
-                                  id={`int-${socio.id}`}
-                                  checked={selectedIntegrantes.includes(
-                                    String(socio.id),
-                                  )}
-                                  onCheckedChange={(
-                                    checked: boolean | string,
-                                  ) => {
-                                    if (checked === true) {
-                                      setSelectedIntegrantes([
-                                        ...selectedIntegrantes,
-                                        String(socio.id),
-                                      ]);
-                                    } else {
-                                      setSelectedIntegrantes(
-                                        selectedIntegrantes.filter(
-                                          (id) => id !== String(socio.id),
-                                        ),
-                                      );
-                                    }
-                                  }}
-                                />
-                                <label
-                                  htmlFor={`int-${socio.id}`}
-                                  className="text-sm cursor-pointer"
-                                >
-                                  {socio.apellido}, {socio.nombre} (
-                                  {getCategoriaLabel(socio.categoria)})
-                                </label>
-                              </div>
-                            ))}
-                          {personasDisponiblesParaGrupo.length === 0 && (
-                            <p className="text-sm text-gray-500">
-                              No hay personas disponibles para agregar.
-                            </p>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          Total grupo:{" "}
-                          {1 +
-                            selectedIntegrantes.filter(
-                              (id) => id !== selectedResponsable,
-                            ).length}{" "}
-                          (Mínimo requerido: 3, Máximo: 8)
-                        </p>
-                      </div>
                     </div>
-                    <div className="flex justify-end gap-2">
+
+                    <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 py-4">
+                      <Label htmlFor="busqueda-integrantes-grupo">
+                        Integrantes adicionales
+                      </Label>
+                      <Input
+                        id="busqueda-integrantes-grupo"
+                        placeholder="Buscar por apellido o nombre..."
+                        aria-label="Buscar integrantes adicionales"
+                        value={busquedaIntegrantesGrupo}
+                        onChange={(event) => {
+                          setBusquedaIntegrantesGrupo(event.target.value)
+                          setPaginaIntegrantes(1);
+                        }}
+                      />
+
+                      <div className="shrink-0 space-y-2">
+                        <p className="text-sm font-medium">
+                          Seleccionados ({integrantesSeleccionados.length})
+                        </p>
+                        {integrantesSeleccionados.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {integrantesSeleccionados.map((socio) => (
+                              <Badge
+                                key={socio.id}
+                                variant="secondary"
+                                className="gap-1 py-1 pl-2 pr-1"
+                              >
+                                <span>
+                                  {socio.apellido}, {socio.nombre}
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label={`Quitar ${socio.apellido}, ${socio.nombre}`}
+                                  onClick={() =>
+                                    setSelectedIntegrantes((integrantes) =>
+                                      integrantes.filter(
+                                        (id) => id !== String(socio.id),
+                                      ),
+                                    )
+                                  }
+                                  className="rounded-full p-0.5 hover:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            No hay integrantes seleccionados
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="h-[30vh] max-h-60 min-h-24 shrink-0 space-y-1 overflow-y-auto overscroll-contain rounded-md border p-2">
+                        {integrantesDeLaPagina.map((socio) => {
+                          const socioId = String(socio.id);
+                          return (
+                            <div
+                              key={socio.id}
+                              className="flex items-center gap-2 rounded-sm px-1 py-1.5 hover:bg-gray-50"
+                            >
+                              <Checkbox
+                                id={`int-${socioId}`}
+                                checked={selectedIntegrantes.includes(socioId)}
+                                onCheckedChange={(
+                                  checked: boolean | string,
+                                ) => {
+                                  if (checked === true) {
+                                    setSelectedIntegrantes((integrantes) =>
+                                      integrantes.includes(socioId)
+                                        ? integrantes
+                                        : [...integrantes, socioId],
+                                    );
+                                  } else {
+                                    setSelectedIntegrantes((integrantes) =>
+                                      integrantes.filter(
+                                        (id) => id !== String(socio.id),
+                                      ),
+                                    );
+                                  }
+                                }}
+                              />
+                              <label
+                                htmlFor={`int-${socio.id}`}
+                                className="flex-1 cursor-pointer text-sm"
+                              >
+                                {socio.apellido}, {socio.nombre} (
+                                {getCategoriaLabel(socio.categoria)})
+                              </label>
+                            </div>
+                          );
+                        })}
+                        {integrantesFiltrados.length === 0 && (
+                          <p className="py-4 text-center text-sm text-gray-500">
+                            No se encontraron integrantes disponibles
+                          </p>
+                        )}
+                      </div>
+                      {totalPaginasIntegrantes > 1 && (
+                        <div className="flex shrink-0 items-center justify-between gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={paginaIntegrantesActual === 1}
+                            onClick={() =>
+                              setPaginaIntegrantes(paginaIntegrantesActual - 1)
+                            }
+                          >
+                            Anterior
+                          </Button>
+                          <span className="text-xs text-gray-500">
+                            Página {paginaIntegrantesActual} de{" "}
+                            {totalPaginasIntegrantes}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              paginaIntegrantesActual === totalPaginasIntegrantes
+                            }
+                            onClick={() =>
+                              setPaginaIntegrantes(paginaIntegrantesActual + 1)
+                            }
+                          >
+                            Siguiente
+                          </Button>
+                        </div>
+                      )}
+                      <p className="shrink-0 text-xs text-gray-500">
+                        Total grupo: {1 + integrantesSeleccionados.length}{" "}
+                        (Mínimo requerido: 3, Máximo: 8)
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 justify-end gap-2 border-t bg-background px-6 py-4">
                       <Button
                         variant="outline"
                         onClick={() => setIsGrupoDialogOpen(false)}
